@@ -120,17 +120,21 @@ func getFilterableFieldNames(model any) []string {
 		typeOf = typeOf.Elem()
 	}
 	var names []string
+	var allFields = map[string]struct{}{}
+	for i := 0; i < typeOf.NumField(); i++ {
+		f := typeOf.Field(i)
+		jsonName := f.Tag.Get("json")
+		if jsonName == "" {
+			jsonName = f.Name
+		}
+		allFields[jsonName] = struct{}{}
+	}
 	// Check for GenericFiltering() bool
 	if _, ok := reflect.TypeOf(model).MethodByName("GenericFiltering"); ok {
 		result := reflect.ValueOf(model).MethodByName("GenericFiltering").Call(nil)
 		if len(result) == 1 && result[0].Bool() {
-			for i := 0; i < typeOf.NumField(); i++ {
-				field := typeOf.Field(i)
-				jsonName := field.Tag.Get("json")
-				if jsonName == "" {
-					jsonName = field.Name
-				}
-				names = append(names, jsonName)
+			for field := range allFields {
+				names = append(names, field)
 			}
 			return names
 		}
@@ -139,7 +143,12 @@ func getFilterableFieldNames(model any) []string {
 	if _, ok := reflect.TypeOf(model).MethodByName("FilterableFields"); ok {
 		vals := reflect.ValueOf(model).MethodByName("FilterableFields").Call(nil)
 		if len(vals) > 0 {
-			names = append(names, vals[0].Interface().([]string)...)
+			for _, v := range vals[0].Interface().([]string) {
+				if _, exists := allFields[v]; !exists {
+					panic("FilterableFields error: field '" + v + "' does not exist in struct " + typeOf.Name())
+				}
+				names = append(names, v)
+			}
 		}
 	}
 	return names

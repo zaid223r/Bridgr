@@ -3,6 +3,8 @@ package brorm
 import (
 	"reflect"
 
+	errors "bridgr/errors"
+
 	"gorm.io/gorm"
 )
 
@@ -22,6 +24,7 @@ func (m *GormModel[T]) List(filters map[string][]string) ([]T, error) {
 		typeOf = typeOf.Elem()
 	}
 	db := m.DB
+	var invalidFields []string
 	for key, values := range filters {
 		if GenericFilteringEnabled || allowed[key] {
 			// Find the struct field by json tag or name
@@ -39,7 +42,12 @@ func (m *GormModel[T]) List(filters map[string][]string) ([]T, error) {
 			} else {
 				db = db.Where(key+" = ?", values[0])
 			}
+		} else {
+			invalidFields = append(invalidFields, key)
 		}
+	}
+	if len(invalidFields) > 0 {
+		return nil, &errors.InvalidFilterFieldError{Fields: invalidFields}
 	}
 	err := db.Find(&result).Error
 	return result, err

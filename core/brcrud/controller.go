@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	errors "bridgr/errors"
+
 	"gorm.io/gorm"
 )
 
@@ -59,6 +61,10 @@ func RegisterCRUDRoutes[T any](
 		filters := r.URL.Query()
 		items, err := model.List(filters)
 		if err != nil {
+			if _, ok := err.(*errors.InvalidFilterFieldError); ok {
+				brcontext.JSON(w, 400, map[string]string{"error": err.Error()})
+				return
+			}
 			brcontext.JSON(w, 500, map[string]string{"error": err.Error()})
 			return
 		}
