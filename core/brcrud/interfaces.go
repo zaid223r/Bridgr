@@ -1,4 +1,4 @@
-package crud
+package brcrud
 
 type BridgrModel[T any] interface {
 	List() ([]T, error)

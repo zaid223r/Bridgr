@@ -1,8 +1,8 @@
-package crud
+package brcrud
 
 import (
-	"bridgr/core/context"
-	brhttp "bridgr/core/http"
+	"bridgr/core/brcontext"
+	"bridgr/core/brhttp"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -31,7 +31,7 @@ func RegisterCRUDRoutes[T any](
 
 	authCheck := func(r *http.Request, w http.ResponseWriter) bool {
 		if opts != nil && opts.Auth != nil && !opts.Auth(r) {
-			context.JSON(w, 403, map[string]string{"error": "Unauthorized"})
+			brcontext.JSON(w, 403, map[string]string{"error": "Unauthorized"})
 			return false
 		}
 		return true
@@ -43,10 +43,10 @@ func RegisterCRUDRoutes[T any](
 		}
 		items, err := model.List()
 		if err != nil {
-			context.JSON(w, 500, map[string]string{"error": err.Error()})
+			brcontext.JSON(w, 500, map[string]string{"error": err.Error()})
 			return
 		}
-		context.JSON(w, 200, items)
+		brcontext.JSON(w, 200, items)
 	}))
 
 	router.AddRoute("POST", base, with(func(w http.ResponseWriter, r *http.Request) {
@@ -55,21 +55,21 @@ func RegisterCRUDRoutes[T any](
 		}
 		var input T
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-			context.JSON(w, 400, map[string]string{"error": "Invalid input"})
+			brcontext.JSON(w, 400, map[string]string{"error": "Invalid input"})
 			return
 		}
 		if opts != nil && opts.Validate != nil {
 			if err := opts.Validate(input); err != nil {
-				context.JSON(w, 422, map[string]string{"error": err.Error()})
+				brcontext.JSON(w, 422, map[string]string{"error": err.Error()})
 				return
 			}
 		}
 		created, err := model.Create(input)
 		if err != nil {
-			context.JSON(w, 500, map[string]string{"error": err.Error()})
+			brcontext.JSON(w, 500, map[string]string{"error": err.Error()})
 			return
 		}
-		context.JSON(w, 201, created)
+		brcontext.JSON(w, 201, created)
 	}))
 
 	router.AddRoute("GET", base+"/{id}", with(func(w http.ResponseWriter, r *http.Request) {
@@ -79,10 +79,10 @@ func RegisterCRUDRoutes[T any](
 		id := extractID(base, r.URL.Path)
 		item, err := model.Get(id)
 		if err != nil {
-			context.JSON(w, 404, map[string]string{"error": "Not found"})
+			brcontext.JSON(w, 404, map[string]string{"error": "Not found"})
 			return
 		}
-		context.JSON(w, 200, item)
+		brcontext.JSON(w, 200, item)
 	}))
 
 	router.AddRoute("PUT", base+"/{id}", with(func(w http.ResponseWriter, r *http.Request) {
@@ -92,21 +92,21 @@ func RegisterCRUDRoutes[T any](
 		id := extractID(base, r.URL.Path)
 		var input T
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-			context.JSON(w, 400, map[string]string{"error": "Invalid input"})
+			brcontext.JSON(w, 400, map[string]string{"error": "Invalid input"})
 			return
 		}
 		if opts != nil && opts.Validate != nil {
 			if err := opts.Validate(input); err != nil {
-				context.JSON(w, 422, map[string]string{"error": err.Error()})
+				brcontext.JSON(w, 422, map[string]string{"error": err.Error()})
 				return
 			}
 		}
 		updated, err := model.Update(id, input)
 		if err != nil {
-			context.JSON(w, 500, map[string]string{"error": err.Error()})
+			brcontext.JSON(w, 500, map[string]string{"error": err.Error()})
 			return
 		}
-		context.JSON(w, 200, updated)
+		brcontext.JSON(w, 200, updated)
 	}))
 
 	router.AddRoute("DELETE", base+"/{id}", with(func(w http.ResponseWriter, r *http.Request) {
@@ -116,10 +116,10 @@ func RegisterCRUDRoutes[T any](
 		id := extractID(base, r.URL.Path)
 		err := model.Delete(id)
 		if err != nil {
-			context.JSON(w, 500, map[string]string{"error": err.Error()})
+			brcontext.JSON(w, 500, map[string]string{"error": err.Error()})
 			return
 		}
-		context.JSON(w, 204, nil)
+		brcontext.JSON(w, 204, nil)
 	}))
 }
 
