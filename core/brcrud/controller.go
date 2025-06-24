@@ -1,12 +1,13 @@
 package brcrud
 
 import (
+	"bridgr/api"
 	"bridgr/core/brcontext"
 	"bridgr/core/brhttp"
 	"bridgr/core/brorm"
 	"encoding/json"
 	"net/http"
-	"strings"
+
 	"gorm.io/gorm"
 )
 
@@ -22,11 +23,19 @@ func RegisterCRUDRoutes[T any](
 	model BridgrModel[T],
 	opts *BridgrOptions[T],
 ) {
+
 	if opts == nil {
 		opts = &BridgrOptions[T]{}
 	}
 
 	base := "/" + path
+
+	var zero T
+	api.RegisterPath("get", base, zero)
+	api.RegisterPath("post", base, zero)
+	api.RegisterPath("get", base+"/{id}", zero)
+	api.RegisterPath("put", base+"/{id}", zero)
+	api.RegisterPath("delete", base+"/{id}", zero)
 
 	with := func(handler http.HandlerFunc) http.HandlerFunc {
 		for i := len(opts.Middlewares) - 1; i >= 0; i-- {
@@ -82,7 +91,7 @@ func RegisterCRUDRoutes[T any](
 		if !authCheck(r, w) {
 			return
 		}
-		id := extractID(base, r.URL.Path)
+		id := brhttp.Params(r)["id"]
 		item, err := model.Get(id)
 		if err != nil {
 			brcontext.JSON(w, 404, map[string]string{"error": "Not found"})
@@ -95,7 +104,7 @@ func RegisterCRUDRoutes[T any](
 		if !authCheck(r, w) {
 			return
 		}
-		id := extractID(base, r.URL.Path)
+		id := brhttp.Params(r)["id"]
 		var input T
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			brcontext.JSON(w, 400, map[string]string{"error": "Invalid input"})
@@ -119,7 +128,7 @@ func RegisterCRUDRoutes[T any](
 		if !authCheck(r, w) {
 			return
 		}
-		id := extractID(base, r.URL.Path)
+		id := brhttp.Params(r)["id"]
 		err := model.Delete(id)
 		if err != nil {
 			brcontext.JSON(w, 500, map[string]string{"error": err.Error()})
@@ -127,10 +136,6 @@ func RegisterCRUDRoutes[T any](
 		}
 		brcontext.JSON(w, 204, nil)
 	}))
-}
-
-func extractID(base string, fullPath string) string {
-	return strings.TrimPrefix(fullPath, base+"/")
 }
 
 func RegisterCRUD[T any](router *brhttp.Router, path string, db *gorm.DB, opts *BridgrOptions[T]) {
