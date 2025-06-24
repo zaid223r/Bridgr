@@ -1,10 +1,10 @@
 package main
 
 import (
-	brcrud "bridgr/core/brcrud"
-	brdb "bridgr/core/brdb"
-	brhttp "bridgr/core/brhttp"
-	"bridgr/examples/todoexample/models"
+	"github.com/zaid223r/Bridgr/core/brcrud"
+	"github.com/zaid223r/Bridgr/core/brdb"
+	"github.com/zaid223r/Bridgr/core/brhttp"
+	"github.com/zaid223r/Bridgr/examples/todoexample/models"
 )
 
 func main() {

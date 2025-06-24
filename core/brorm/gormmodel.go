@@ -3,7 +3,7 @@ package brorm
 import (
 	"reflect"
 
-	errors "bridgr/errors"
+	"github.com/zaid223r/Bridgr/errors"
 
 	"gorm.io/gorm"
 )

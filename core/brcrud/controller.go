@@ -1,14 +1,14 @@
 package brcrud
 
 import (
-	"bridgr/api"
-	"bridgr/core/brcontext"
-	"bridgr/core/brhttp"
-	"bridgr/core/brorm"
 	"encoding/json"
 	"net/http"
 
-	errors "bridgr/errors"
+	"github.com/zaid223r/Bridgr/api"
+	"github.com/zaid223r/Bridgr/core/brcontext"
+	"github.com/zaid223r/Bridgr/core/brhttp"
+	"github.com/zaid223r/Bridgr/core/brorm"
+	"github.com/zaid223r/Bridgr/errors"
 
 	"gorm.io/gorm"
 )
