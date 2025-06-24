@@ -3,9 +3,11 @@ package brcrud
 import (
 	"bridgr/core/brcontext"
 	"bridgr/core/brhttp"
+	"bridgr/core/brorm"
 	"encoding/json"
 	"net/http"
 	"strings"
+	"gorm.io/gorm"
 )
 
 type BridgrOptions[T any] struct {
@@ -20,6 +22,10 @@ func RegisterCRUDRoutes[T any](
 	model BridgrModel[T],
 	opts *BridgrOptions[T],
 ) {
+	if opts == nil {
+		opts = &BridgrOptions[T]{}
+	}
+
 	base := "/" + path
 
 	with := func(handler http.HandlerFunc) http.HandlerFunc {
@@ -125,4 +131,9 @@ func RegisterCRUDRoutes[T any](
 
 func extractID(base string, fullPath string) string {
 	return strings.TrimPrefix(fullPath, base+"/")
+}
+
+func RegisterCRUD[T any](router *brhttp.Router, path string, db *gorm.DB, opts *BridgrOptions[T]) {
+	model := &brorm.GormModel[T]{DB: db}
+	RegisterCRUDRoutes(router, path, model, opts)
 }
