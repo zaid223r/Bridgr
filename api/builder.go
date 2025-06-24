@@ -1,6 +1,9 @@
 package api
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"reflect"
+)
 
 func BuildSpec() ([]byte, error) {
 	paths := map[string]any{}
@@ -37,6 +40,21 @@ func BuildSpec() ([]byte, error) {
 					"type": "string",
 				},
 			})
+		}
+
+		// Add filterable fields as query parameters for GET list endpoints
+		if p.Method == "get" && extractPathParam(p.Path) == "" {
+			for _, name := range getFilterableFieldNames(p.Model) {
+				fieldType := getFieldTypeByJSONTag(p.Model, name)
+				parameters = append(parameters, map[string]any{
+					"name":     name,
+					"in":       "query",
+					"required": false,
+					"schema": map[string]any{
+						"type": fieldType,
+					},
+				})
+			}
 		}
 
 		methodSpec := map[string]any{
@@ -93,4 +111,61 @@ func extractPathParam(path string) string {
 		return path[start:end]
 	}
 	return ""
+}
+
+// getFilterableFieldNames returns a slice of filterable field names for a model instance
+func getFilterableFieldNames(model any) []string {
+	typeOf := reflect.TypeOf(model)
+	if typeOf.Kind() == reflect.Ptr {
+		typeOf = typeOf.Elem()
+	}
+	var names []string
+	// Check for GenericFiltering() bool
+	if _, ok := reflect.TypeOf(model).MethodByName("GenericFiltering"); ok {
+		result := reflect.ValueOf(model).MethodByName("GenericFiltering").Call(nil)
+		if len(result) == 1 && result[0].Bool() {
+			for i := 0; i < typeOf.NumField(); i++ {
+				field := typeOf.Field(i)
+				jsonName := field.Tag.Get("json")
+				if jsonName == "" {
+					jsonName = field.Name
+				}
+				names = append(names, jsonName)
+			}
+			return names
+		}
+	}
+	// Otherwise, check for FilterableFields()
+	if _, ok := reflect.TypeOf(model).MethodByName("FilterableFields"); ok {
+		vals := reflect.ValueOf(model).MethodByName("FilterableFields").Call(nil)
+		if len(vals) > 0 {
+			names = append(names, vals[0].Interface().([]string)...)
+		}
+	}
+	return names
+}
+
+func getFieldTypeByJSONTag(model any, jsonTag string) string {
+	t := reflect.TypeOf(model)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		tag := f.Tag.Get("json")
+		if tag == jsonTag || (tag == "" && f.Name == jsonTag) {
+			switch f.Type.Kind() {
+			case reflect.Bool:
+				return "boolean"
+			case reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8,
+				reflect.Uint, reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8:
+				return "integer"
+			case reflect.Float32, reflect.Float64:
+				return "number"
+			case reflect.String:
+				return "string"
+			}
+		}
+	}
+	return "string"
 }

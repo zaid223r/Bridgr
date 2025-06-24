@@ -56,7 +56,8 @@ func RegisterCRUDRoutes[T any](
 		if !authCheck(r, w) {
 			return
 		}
-		items, err := model.List()
+		filters := r.URL.Query()
+		items, err := model.List(filters)
 		if err != nil {
 			brcontext.JSON(w, 500, map[string]string{"error": err.Error()})
 			return
