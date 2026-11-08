@@ -2,6 +2,8 @@
 package main
 
 import (
+	"log"
+
 	"github.com/zaid223r/Bridgr/core/brcrud"
 	"github.com/zaid223r/Bridgr/core/brdb"
 	"github.com/zaid223r/Bridgr/core/brhttp"
@@ -20,5 +22,8 @@ func main() {
 	brcrud.RegisterCRUD[models.Todo](router, "todos", db, nil)
 	brcrud.RegisterCRUD[models.Note](router, "notes", db, nil)
 
-	brhttp.StartServer(router, "8080")
+	server := brhttp.NewServer(router, brhttp.Config{Addr: ":8080"})
+	if err := server.ListenAndServe(); err != nil {
+		log.Fatal(err)
+	}
 }

@@ -2,6 +2,7 @@
 package brorm
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -36,12 +37,12 @@ func pkWhere[T any]() (string, error) {
 // List returns all rows matching filters. String fields match with LIKE, other
 // fields by equality. Keys that are not filterable produce an InvalidFilterFieldError
 // listing them in sorted order.
-func (m *GormModel[T]) List(filters map[string][]string) ([]T, error) {
+func (m *GormModel[T]) List(ctx context.Context, filters map[string][]string) ([]T, error) {
 	model, err := brschema.Of[T]()
 	if err != nil {
 		return nil, err
 	}
-	db := m.DB
+	db := m.DB.WithContext(ctx)
 	var invalidFields []string
 	for _, key := range slices.Sorted(maps.Keys(filters)) {
 		field, ok := model.FilterField(key)
@@ -66,47 +67,48 @@ func (m *GormModel[T]) List(filters map[string][]string) ([]T, error) {
 
 // Get returns the row whose primary key is id, or an error wrapping
 // brerrors.ErrNotFound.
-func (m *GormModel[T]) Get(id string) (T, error) {
+func (m *GormModel[T]) Get(ctx context.Context, id string) (T, error) {
 	var result T
 	where, err := pkWhere[T]()
 	if err != nil {
 		return result, err
 	}
-	err = m.DB.First(&result, where, id).Error
+	err = m.DB.WithContext(ctx).First(&result, where, id).Error
 	return result, mapError(err)
 }
 
 // Create inserts input and returns it with generated fields such as the ID filled in.
-func (m *GormModel[T]) Create(input T) (T, error) {
-	err := m.DB.Create(&input).Error
+func (m *GormModel[T]) Create(ctx context.Context, input T) (T, error) {
+	err := m.DB.WithContext(ctx).Create(&input).Error
 	return input, err
 }
 
 // Update applies input to the row with primary key id, or returns an error wrapping
 // brerrors.ErrNotFound. Zero-valued fields are skipped (GORM Updates semantics), so
 // they cannot be cleared this way.
-func (m *GormModel[T]) Update(id string, input T) (T, error) {
+func (m *GormModel[T]) Update(ctx context.Context, id string, input T) (T, error) {
 	var existing T
 	where, err := pkWhere[T]()
 	if err != nil {
 		return input, err
 	}
-	if err := m.DB.First(&existing, where, id).Error; err != nil {
+	db := m.DB.WithContext(ctx)
+	if err := db.First(&existing, where, id).Error; err != nil {
 		return input, mapError(err)
 	}
-	err = m.DB.Model(&existing).Updates(input).Error
+	err = db.Model(&existing).Updates(input).Error
 	return existing, err
 }
 
 // Delete removes the row with primary key id, or returns an error wrapping
 // brerrors.ErrNotFound when no row matched.
-func (m *GormModel[T]) Delete(id string) error {
+func (m *GormModel[T]) Delete(ctx context.Context, id string) error {
 	var obj T
 	where, err := pkWhere[T]()
 	if err != nil {
 		return err
 	}
-	res := m.DB.Where(where, id).Delete(&obj)
+	res := m.DB.WithContext(ctx).Where(where, id).Delete(&obj)
 	if res.Error != nil {
 		return res.Error
 	}

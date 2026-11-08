@@ -67,7 +67,7 @@ func RegisterCRUDRoutes[T any](
 	}
 
 	handle("GET", base, func(w http.ResponseWriter, r *http.Request) {
-		items, err := model.List(r.URL.Query())
+		items, err := model.List(r.Context(), r.URL.Query())
 		if err != nil {
 			brerrors.WriteError(w, r, err)
 			return
@@ -80,7 +80,7 @@ func RegisterCRUDRoutes[T any](
 		if !ok {
 			return
 		}
-		created, err := model.Create(input)
+		created, err := model.Create(r.Context(), input)
 		if err != nil {
 			brerrors.WriteError(w, r, err)
 			return
@@ -89,7 +89,7 @@ func RegisterCRUDRoutes[T any](
 	})
 
 	handle("GET", base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
-		item, err := model.Get(r.PathValue("id"))
+		item, err := model.Get(r.Context(), r.PathValue("id"))
 		if err != nil {
 			brerrors.WriteError(w, r, err)
 			return
@@ -102,7 +102,7 @@ func RegisterCRUDRoutes[T any](
 		if !ok {
 			return
 		}
-		updated, err := model.Update(r.PathValue("id"), input)
+		updated, err := model.Update(r.Context(), r.PathValue("id"), input)
 		if err != nil {
 			brerrors.WriteError(w, r, err)
 			return
@@ -111,7 +111,7 @@ func RegisterCRUDRoutes[T any](
 	})
 
 	handle("DELETE", base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if err := model.Delete(r.PathValue("id")); err != nil {
+		if err := model.Delete(r.Context(), r.PathValue("id")); err != nil {
 			brerrors.WriteError(w, r, err)
 			return
 		}
@@ -141,11 +141,15 @@ func withAuth(auth func(*http.Request) error, next http.HandlerFunc) http.Handle
 }
 
 // decodeInput reads the JSON body into a T and validates it. On failure it writes
-// a 400 or 422 problem and returns false.
+// a 400, 413 or 422 problem and returns false.
 func decodeInput[T any](w http.ResponseWriter, r *http.Request, validate func(T) error) (T, bool) {
 	var input T
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		p := brerrors.New(http.StatusBadRequest, "invalid JSON body: "+err.Error())
+		if tooBig, ok := errors.AsType[*http.MaxBytesError](err); ok {
+			p = brerrors.New(http.StatusRequestEntityTooLarge,
+				fmt.Sprintf("request body is larger than %d bytes", tooBig.Limit))
+		}
 		p.Instance = r.URL.Path
 		brerrors.Write(w, p)
 		return input, false

@@ -35,11 +35,11 @@ park or delete a branch is defined in [CLAUDE.md § Branch lifecycle](CLAUDE.md#
   - [x] validate `FilterableFields` during registration
   - [x] remove global `GenericFilteringEnabled` (unsafe: lets any column name reach SQL)
   - [x] tests
-- [ ] **`feat/app-lifecycle`**: an `App` type that's ready for production
-  - [ ] server timeouts, graceful shutdown on SIGINT/SIGTERM
-  - [ ] `log/slog` request logging, request-body size limit
-  - [ ] request context passed through to storage
-  - [ ] tests
+- [x] **`feat/app-lifecycle`**: an `App` type that's ready for production
+  - [x] server timeouts, graceful shutdown on SIGINT/SIGTERM
+  - [x] `log/slog` request logging, request-body size limit
+  - [x] request context passed through to storage
+  - [x] tests
 
 ## Phase 2: Storage (SQL first)
 
