@@ -39,8 +39,9 @@ Turn Go structs into documented REST APIs with one line per resource.
   request context down to the database, and shuts down gracefully on SIGINT/SIGTERM.
 - **Storage** behind one `brstore.Store` interface with typed queries (filters, operators,
   sorting, paging) and a shared contract test suite every backend must pass. Available
-  now: in-memory (`brstore.NewMemory`), and SQLite and PostgreSQL on plain `database/sql`
-  with no ORM (`sqlstore.New[T](db, sqlstore.SQLite)` or `sqlstore.Postgres`).
+  now: in-memory (`brstore.NewMemory`), and SQLite, PostgreSQL and MySQL on plain
+  `database/sql` with no ORM (`sqlstore.SQLite`, `sqlstore.Postgres`, `mysql.Dialect`
+  from `sqlstore/mysql`). All of them pass the same contract tests, in CI.
 - **Struct tags**: `json` names fields in the API; `db:"column"` or `db:"column,pk"` sets
   the database column and primary key (default: snake_case of the field name, and the
   field named `ID`). GORM's `column` and `primaryKey` tags are also read, so GORM models
@@ -106,6 +107,14 @@ todos, err := sqlstore.New[Todo](db, sqlstore.Postgres)
 
 [examples/todoexample](examples/todoexample) is a complete Postgres example.
 
+For MySQL 8, use `github.com/go-sql-driver/mysql` with `parseTime=true` in the DSN:
+
+```go
+// import _ "github.com/go-sql-driver/mysql"; ".../core/brstore/sqlstore/mysql"
+db, err := sql.Open("mysql", "user:pass@tcp(localhost:3306)/app?parseTime=true")
+todos, err := sqlstore.New[Todo](db, mysql.Dialect)
+```
+
 Then try:
 
 - `POST /todos` with `{"title":"buy milk"}`
@@ -115,7 +124,7 @@ Then try:
 
 ## Where it's going
 
-SQL first (PostgreSQL, SQLite, MySQL) without an ORM, MongoDB as an optional module,
+MongoDB as an optional module,
 OpenAPI 3.1 complete enough to generate typed TypeScript clients, validation, auth hooks,
 middleware, and published benchmarks. Full plan: [ROADMAP.md](ROADMAP.md).
 
@@ -123,7 +132,7 @@ middleware, and published benchmarks. Full plan: [ROADMAP.md](ROADMAP.md).
 
 ```bash
 make check         # format, vet, lint, race tests
-make integration   # also runs Postgres tests (starts it with docker compose)
+make integration   # also runs Postgres and MySQL tests (starts them with docker compose)
 ```
 
 Contributor and AI-assistant conventions are in [CLAUDE.md](CLAUDE.md).

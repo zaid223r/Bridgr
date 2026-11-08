@@ -81,6 +81,8 @@ func (postgresDialect) IsUniqueViolation(err error) bool {
 
 func (postgresDialect) NoLimit() string { return "" }
 
+func (postgresDialect) Returning() bool { return true }
+
 // SyncSequence is needed because an identity column's sequence doesn't notice
 // rows inserted with an explicit id; the next generated id would collide.
 func (d postgresDialect) SyncSequence(table, column string) (string, []any) {

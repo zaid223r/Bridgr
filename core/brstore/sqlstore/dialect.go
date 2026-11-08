@@ -9,9 +9,9 @@ import (
 	"github.com/zaid223r/Bridgr/core/brschema"
 )
 
-// Dialect is the SQL that differs between databases. Bridgr ships SQLite and
-// Postgres; the methods are exported so other databases can be added without
-// forking.
+// Dialect is the SQL that differs between databases. Bridgr ships SQLite,
+// Postgres and MySQL (package sqlstore/mysql); the methods are exported so other
+// databases can be added without forking.
 type Dialect interface {
 	// Placeholder returns the n-th (1-based) bind parameter: "?" or "$n".
 	Placeholder(n int) string
@@ -35,6 +35,9 @@ type Dialect interface {
 	// generator past explicitly inserted integer keys, or "" when the database
 	// does that by itself.
 	SyncSequence(table, column string) (string, []any)
+	// Returning reports whether INSERT ... RETURNING is supported. Without it,
+	// generated keys are read with sql.Result.LastInsertId.
+	Returning() bool
 }
 
 // SQLite is the dialect for SQLite through modernc.org/sqlite (pure Go, no cgo).
@@ -86,6 +89,8 @@ func (sqliteDialect) ColumnType(f *brschema.Field) string {
 }
 
 func (sqliteDialect) NoLimit() string { return "LIMIT -1" }
+
+func (sqliteDialect) Returning() bool { return true }
 
 func (sqliteDialect) SyncSequence(string, string) (string, []any) { return "", nil }
 

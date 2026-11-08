@@ -1,6 +1,7 @@
 .PHONY: check fmt vet lint test race integration services-up services-down bench cover tidy
 
-INTEGRATION_ENV := BRIDGR_POSTGRES_DSN="postgres://bridgr:bridgr@localhost:55432/bridgr?sslmode=disable"
+INTEGRATION_ENV := BRIDGR_POSTGRES_DSN="postgres://bridgr:bridgr@localhost:55432/bridgr?sslmode=disable" \
+	BRIDGR_MYSQL_DSN="bridgr:bridgr@tcp(localhost:53306)/bridgr?parseTime=true"
 
 PKGS := ./...
 

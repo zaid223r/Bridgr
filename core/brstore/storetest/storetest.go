@@ -206,6 +206,12 @@ func testUpdate(t *testing.T, newStore NewStore) {
 		t.Errorf("zero values not applied: %+v", updated)
 	}
 
+	// Writing back exactly what is stored must succeed: some databases (MySQL)
+	// report zero affected rows for an update that changes nothing.
+	if _, err := s.Update(t.Context(), id(stored), stored); err != nil {
+		t.Errorf("update with unchanged values: %v", err)
+	}
+
 	_, err = s.Update(t.Context(), "999999", replacement)
 	wantErr(t, err, brerrors.ErrNotFound)
 	_, err = s.Update(t.Context(), "abc", replacement)

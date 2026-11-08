@@ -16,3 +16,20 @@ services:
       interval: 2s
       timeout: 5s
       retries: 30
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: bridgr
+      MYSQL_DATABASE: bridgr
+      MYSQL_USER: bridgr
+      MYSQL_PASSWORD: bridgr
+    ports:
+      - "53306:3306"
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-ubridgr", "-pbridgr"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
