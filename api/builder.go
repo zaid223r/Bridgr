@@ -6,7 +6,6 @@ import (
 )
 
 // BuildSpec renders the OpenAPI 3.0 document for every route registered with RegisterPath.
-// It panics if a model lists a filterable field that does not exist.
 func BuildSpec() ([]byte, error) {
 	paths := map[string]any{}
 

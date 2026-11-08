@@ -96,3 +96,19 @@ func TestBuildSpecUsesSchema(t *testing.T) {
 		t.Errorf("PUT id = %v, want readOnly integer", put["id"])
 	}
 }
+
+type typoSpec struct {
+	Title string `json:"title"`
+}
+
+func (typoSpec) FilterableFields() []string { return []string{"titel"} }
+
+func TestRegisterPathRejectsInvalidModel(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if recover() == nil {
+			t.Error("RegisterPath accepted a model with an unknown filterable field")
+		}
+	}()
+	RegisterPath("get", "/typo-spec", typoSpec{})
+}
