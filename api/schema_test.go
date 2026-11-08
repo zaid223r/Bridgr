@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 )
 
@@ -85,8 +86,8 @@ func TestBuildSpecUsesSchema(t *testing.T) {
 			t.Errorf("id filter type = %v, want integer", p.Schema["type"])
 		}
 	}
-	if len(names) != 2 || names[0] != "title" || names[1] != "id" {
-		t.Errorf("list filters = %v, want [title id]", names)
+	if want := "[limit offset sort title id]"; fmt.Sprint(names) != want {
+		t.Errorf("list parameters = %v, want %s", names, want)
 	}
 	descriptions := map[string]string{}
 	for _, p := range list.Parameters {
@@ -97,6 +98,9 @@ func TestBuildSpecUsesSchema(t *testing.T) {
 	}
 	if want := "Exact match. Repeat to match any of several values. Operators: id[eq], id[ne], id[gt], id[gte], id[lt], id[lte], id[in]. id[in] takes a comma-separated list."; descriptions["id"] != want {
 		t.Errorf("id description = %q", descriptions["id"])
+	}
+	if want := "Comma-separated fields, '-' for descending, e.g. -title. Sortable: id, title."; descriptions["sort"] != want {
+		t.Errorf("sort description = %q", descriptions["sort"])
 	}
 
 	post := doc.Paths["/spec-todos"]["post"].RequestBody.Content["application/json"].Schema.Properties
@@ -125,4 +129,17 @@ func TestRegisterPathRejectsInvalidModel(t *testing.T) {
 		}
 	}()
 	RegisterPath("get", "/typo-spec", typoSpec{})
+}
+
+type unsortable struct {
+	Name string `json:"name"`
+}
+
+func TestPagingParametersWithoutSortableFields(t *testing.T) {
+	t.Parallel()
+	m := mustSchema(unsortable{})
+	params := pagingParameters(m)
+	if len(params) != 2 {
+		t.Errorf("got %d paging parameters, want limit and offset only", len(params))
+	}
 }

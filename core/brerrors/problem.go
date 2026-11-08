@@ -55,8 +55,8 @@ func Write(w http.ResponseWriter, p Problem) {
 
 // FromError maps err to a Problem:
 //
-//   - *InvalidFilterFieldError, *InvalidFilterValueError, *InvalidFilterOperatorError
-//     → 400 with the fields in invalid_fields
+//   - *InvalidFilterFieldError, *InvalidFilterValueError, *InvalidFilterOperatorError,
+//     *InvalidParamError → 400 with the fields in invalid_fields
 //   - ErrNotFound → 404
 //   - ErrUnauthenticated → 401
 //   - ErrForbidden → 403
@@ -76,6 +76,9 @@ func FromError(r *http.Request, err error) Problem {
 	} else if opErr, ok := errors.AsType[*InvalidFilterOperatorError](err); ok {
 		p = New(http.StatusBadRequest, opErr.Error())
 		p.InvalidFields = []string{opErr.Field}
+	} else if paramErr, ok := errors.AsType[*InvalidParamError](err); ok {
+		p = New(http.StatusBadRequest, paramErr.Error())
+		p.InvalidFields = []string{paramErr.Param}
 	} else {
 		switch {
 		case errors.Is(err, ErrNotFound):

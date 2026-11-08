@@ -71,6 +71,13 @@ func (f *fakeStore) List(ctx context.Context, q brstore.Query) ([]item, error) {
 	return f.Memory.List(ctx, q)
 }
 
+func (f *fakeStore) Count(ctx context.Context, q brstore.Query) (int64, error) {
+	if err := f.record(ctx, ""); err != nil {
+		return 0, err
+	}
+	return f.Memory.Count(ctx, q)
+}
+
 func (f *fakeStore) Get(ctx context.Context, id string) (item, error) {
 	if err := f.record(ctx, id); err != nil {
 		return item{}, err
@@ -634,4 +641,106 @@ func TestFilterOperatorErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPaginationAndSorting(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore(t, seedItems...) // 1 Hex Bolt qty 5 active, 2 wing nut qty 0, 3 Carriage bolt qty 12 active
+	router := newServer(t, store, nil)
+
+	tests := []struct {
+		query     string
+		want      []string
+		wantTotal string
+	}{
+		{"", []string{"Hex Bolt", "wing nut", "Carriage bolt"}, "3"},
+		{"?limit=2", []string{"Hex Bolt", "wing nut"}, "3"},
+		{"?limit=2&offset=2", []string{"Carriage bolt"}, "3"},
+		{"?offset=5", []string{}, "3"},
+		{"?sort=-qty", []string{"Carriage bolt", "Hex Bolt", "wing nut"}, "3"},
+		{"?sort=active,-qty", []string{"wing nut", "Carriage bolt", "Hex Bolt"}, "3"},
+		{"?sort=-id&limit=1", []string{"Carriage bolt"}, "3"},
+		{"?active=true&sort=qty&limit=1", []string{"Hex Bolt"}, "2"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			rec := serve(t, router, "GET", "/items"+tt.query, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+			}
+			if got := titles(decode[[]item](t, rec)); !slices.Equal(got, tt.want) {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+			if got := rec.Header().Get("X-Total-Count"); got != tt.wantTotal {
+				t.Errorf("X-Total-Count = %q, want %s", got, tt.wantTotal)
+			}
+			if rec.Header().Get("Link") == "" {
+				t.Error("no Link header")
+			}
+		})
+	}
+
+	rec := serve(t, router, "GET", "/items?active=true&limit=1", "")
+	wantLink := `</items?active=true&limit=1&offset=0>; rel="first", </items?active=true&limit=1&offset=1>; rel="next", </items?active=true&limit=1&offset=1>; rel="last"`
+	if got := rec.Header().Get("Link"); got != wantLink {
+		t.Errorf("Link =\n  %s\nwant\n  %s", got, wantLink)
+	}
+
+	serve(t, router, "GET", "/items", "")
+	if store.lastQuery.Limit != 50 || store.lastQuery.Offset != 0 {
+		t.Errorf("default page = limit %d offset %d, want 50 and 0", store.lastQuery.Limit, store.lastQuery.Offset)
+	}
+}
+
+func TestPagingErrors(t *testing.T) {
+	t.Parallel()
+	router := newServer(t, newFakeStore(t, seedItems...), &brcrud.Options[item]{DefaultLimit: 2, MaxLimit: 5})
+
+	tests := []struct {
+		query      string
+		wantDetail string
+		wantField  string
+	}{
+		{"?limit=0", `invalid limit "0": want an integer from 1 to 5`, "limit"},
+		{"?limit=6", `invalid limit "6": want an integer from 1 to 5`, "limit"},
+		{"?limit=ten", `invalid limit "ten": want an integer from 1 to 5`, "limit"},
+		{"?offset=-1", `invalid offset "-1": want an integer of 0 or more`, "offset"},
+		{"?offset=x", `invalid offset "x": want an integer of 0 or more`, "offset"},
+		{"?limit=1&limit=2", `invalid limit "1,2": give it once`, "limit"},
+		{"?sort=price", `invalid sort "price": can't sort by "price"; use id, title, qty, active`, "sort"},
+		{"?sort=-", `invalid sort "-": can't sort by ""; use id, title, qty, active`, "sort"},
+		{"?sort=qty,,title", `invalid sort "qty,,title": can't sort by ""; use id, title, qty, active`, "sort"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			t.Parallel()
+			p := decodeProblem(t, serve(t, router, "GET", "/items"+tt.query, ""), http.StatusBadRequest)
+			if p.Detail != tt.wantDetail {
+				t.Errorf("detail = %q,\nwant %q", p.Detail, tt.wantDetail)
+			}
+			if !slices.Equal(p.InvalidFields, []string{tt.wantField}) {
+				t.Errorf("invalid_fields = %v, want [%s]", p.InvalidFields, tt.wantField)
+			}
+		})
+	}
+
+	rec := serve(t, router, "GET", "/items", "")
+	if got := len(decode[[]item](t, rec)); got != 2 || rec.Header().Get("X-Total-Count") != "3" {
+		t.Errorf("custom DefaultLimit: got %d items, total %s", got, rec.Header().Get("X-Total-Count"))
+	}
+}
+
+func TestCountFailure(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore(t, seedItems...)
+	countFails := &countFailingStore{fakeStore: store}
+	router := brhttp.NewRouter()
+	brcrud.RegisterCRUD[item](router, "items", countFails, nil)
+	decodeProblem(t, serve(t, router, "GET", "/items", ""), http.StatusInternalServerError)
+}
+
+type countFailingStore struct{ *fakeStore }
+
+func (countFailingStore) Count(context.Context, brstore.Query) (int64, error) {
+	return 0, errors.New("count exploded")
 }

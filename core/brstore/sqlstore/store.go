@@ -30,6 +30,7 @@ type Store[T any] struct {
 	columns map[string]string // JSON name → quoted column
 
 	selectSQL         string // SELECT cols FROM table
+	countSQL          string // SELECT COUNT(*) FROM table
 	getSQL            string
 	insertSQL         string // every column
 	insertGeneratedPK string // every column but the key, RETURNING key
@@ -103,6 +104,7 @@ func (s *Store[T]) build() {
 	}
 
 	s.selectSQL = "SELECT " + strings.Join(all, ", ") + " FROM " + table
+	s.countSQL = "SELECT COUNT(*) FROM " + table
 	s.getSQL = s.selectSQL + " WHERE " + pkCol + " = " + s.dialect.Placeholder(1)
 	s.deleteSQL = "DELETE FROM " + table + " WHERE " + pkCol + " = " + s.dialect.Placeholder(1)
 	s.insertSQL = s.insertStatement(s.insertFields, "")
@@ -175,6 +177,25 @@ func (s *Store[T]) List(ctx context.Context, q brstore.Query) ([]T, error) {
 		return nil, fmt.Errorf("listing %s: %w", s.table, err)
 	}
 	return out, nil
+}
+
+// Count returns how many rows match q.Filters.
+func (s *Store[T]) Count(ctx context.Context, q brstore.Query) (int64, error) {
+	var b strings.Builder
+	b.WriteString(s.countSQL)
+	var args []any
+	ph := func(v any) string {
+		args = append(args, bindValue(v))
+		return s.dialect.Placeholder(len(args))
+	}
+	if err := s.writeWhere(&b, q.Filters, ph); err != nil {
+		return 0, err
+	}
+	var n int64
+	if err := s.db.QueryRowContext(ctx, b.String(), args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("counting %s: %w", s.table, err)
+	}
+	return n, nil
 }
 
 // Get returns the row with primary key id.
@@ -286,23 +307,8 @@ func (s *Store[T]) listSQL(q brstore.Query) (string, []any, error) {
 		args = append(args, bindValue(v))
 		return s.dialect.Placeholder(len(args))
 	}
-
-	for i, f := range q.Filters {
-		col, ok := s.columns[f.Field]
-		if !ok {
-			return "", nil, fmt.Errorf("%w: unknown filter field %q", brstore.ErrInvalidQuery, f.Field)
-		}
-		field, _ := s.model.FieldByJSON(f.Field)
-		cond, err := s.condition(col, field, f, ph)
-		if err != nil {
-			return "", nil, err
-		}
-		if i == 0 {
-			b.WriteString(" WHERE ")
-		} else {
-			b.WriteString(" AND ")
-		}
-		b.WriteString(cond)
+	if err := s.writeWhere(&b, q.Filters, ph); err != nil {
+		return "", nil, err
 	}
 
 	b.WriteString(" ORDER BY ")
@@ -330,6 +336,28 @@ func (s *Store[T]) listSQL(q brstore.Query) (string, []any, error) {
 		b.WriteString(" OFFSET " + ph(int64(q.Offset)))
 	}
 	return b.String(), args, nil
+}
+
+// writeWhere appends the WHERE clause for filters, if any.
+func (s *Store[T]) writeWhere(b *strings.Builder, filters []brstore.Filter, ph func(any) string) error {
+	for i, f := range filters {
+		col, ok := s.columns[f.Field]
+		if !ok {
+			return fmt.Errorf("%w: unknown filter field %q", brstore.ErrInvalidQuery, f.Field)
+		}
+		field, _ := s.model.FieldByJSON(f.Field)
+		cond, err := s.condition(col, field, f, ph)
+		if err != nil {
+			return err
+		}
+		if i == 0 {
+			b.WriteString(" WHERE ")
+		} else {
+			b.WriteString(" AND ")
+		}
+		b.WriteString(cond)
+	}
+	return nil
 }
 
 func (s *Store[T]) condition(col string, field *brschema.Field, f brstore.Filter, ph func(any) string) (string, error) {

@@ -62,6 +62,7 @@ func Run(t *testing.T, newStore NewStore) {
 	t.Run("Filters", func(t *testing.T) { testFilters(t, newStore) })
 	t.Run("Sort", func(t *testing.T) { testSort(t, newStore) })
 	t.Run("Paging", func(t *testing.T) { testPaging(t, newStore) })
+	t.Run("Count", func(t *testing.T) { testCount(t, newStore) })
 	t.Run("InvalidQuery", func(t *testing.T) { testInvalidQuery(t, newStore) })
 	t.Run("CancelledContext", func(t *testing.T) { testCancelled(t, newStore) })
 	t.Run("ConcurrentCreates", func(t *testing.T) { testConcurrentCreates(t, newStore) })
@@ -371,6 +372,39 @@ func testPaging(t *testing.T, newStore NewStore) {
 	}
 }
 
+func testCount(t *testing.T, newStore NewStore) {
+	empty, err := newStore(t).Count(t.Context(), brstore.Query{})
+	if err != nil || empty != 0 {
+		t.Errorf("empty store Count = %d, %v; want 0", empty, err)
+	}
+
+	s, _ := seeded(t, newStore)
+	tests := []struct {
+		name string
+		q    brstore.Query
+		want int64
+	}{
+		{"all", brstore.Query{}, 5},
+		{"filtered", brstore.Query{Filters: []brstore.Filter{{Field: "active", Op: brstore.Eq, Value: true}}}, 3},
+		{"two filters", brstore.Query{Filters: []brstore.Filter{
+			{Field: "active", Op: brstore.Eq, Value: true},
+			{Field: "qty", Op: brstore.Gt, Value: int64(5)},
+		}}, 2},
+		{"no match", brstore.Query{Filters: []brstore.Filter{{Field: "qty", Op: brstore.Gt, Value: int64(1000)}}}, 0},
+		{"ignores paging and sort", brstore.Query{Limit: 1, Offset: 2, Sort: []brstore.Sort{{Field: "qty", Desc: true}}}, 5},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := s.Count(t.Context(), tt.q)
+			if err != nil || got != tt.want {
+				t.Errorf("Count = %d, %v; want %d", got, err, tt.want)
+			}
+		})
+	}
+	_, err = s.Count(t.Context(), brstore.Query{Filters: []brstore.Filter{{Field: "nope", Op: brstore.Eq, Value: 1}}})
+	wantErr(t, err, brstore.ErrInvalidQuery)
+}
+
 func testInvalidQuery(t *testing.T, newStore NewStore) {
 	s, _ := seeded(t, newStore)
 	queries := map[string]brstore.Query{
@@ -394,6 +428,8 @@ func testCancelled(t *testing.T, newStore NewStore) {
 	_, err := s.List(ctx, brstore.Query{})
 	wantErr(t, err, context.Canceled)
 	_, err = s.Get(ctx, id(created[0]))
+	wantErr(t, err, context.Canceled)
+	_, err = s.Count(ctx, brstore.Query{})
 	wantErr(t, err, context.Canceled)
 	_, err = s.Create(ctx, Widget{Name: "x", Released: day(0)})
 	wantErr(t, err, context.Canceled)

@@ -22,6 +22,10 @@ Turn Go structs into documented REST APIs with one line per resource.
     `eq ne gt gte lt lte in`.
   - Unknown fields, unsupported operators and unparsable values return `400` with the
     offending field in `invalid_fields`. Values are always bound as SQL parameters.
+- **Paging and sorting**: `?limit=20&offset=40&sort=-qty,title`. Lists return 50 records
+  by default and at most 200 (`Options.DefaultLimit` / `MaxLimit`). Responses carry
+  `X-Total-Count` and an RFC 8288 `Link` header with `first`, `prev`, `next` and `last`
+  pages that keep your filters. Sorting works on the primary key and filterable fields.
   - A `FilterableFields` entry that isn't a JSON field of the model panics at
     registration, so the mistake stops the program at startup.
 - **OpenAPI**: `/openapi.json` and a Swagger UI at `/docs`, with filters documented as query
@@ -108,10 +112,6 @@ Then try:
 - `GET /todos?title=milk&done=false` (strings match case-insensitively as substrings;
   repeat a parameter to match any of several values)
 - `GET /docs` for Swagger UI, `GET /openapi.json` for the spec
-
-## Known limitations (being fixed, see the roadmap)
-
-- List endpoints have no pagination yet.
 
 ## Where it's going
 

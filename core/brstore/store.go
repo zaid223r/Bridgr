@@ -38,6 +38,9 @@ type Store[T any] interface {
 	Create(ctx context.Context, value T) (T, error)
 	Update(ctx context.Context, id string, value T) (T, error)
 	Delete(ctx context.Context, id string) error
+	// Count returns how many records match q.Filters; Sort, Limit and Offset are
+	// ignored.
+	Count(ctx context.Context, q Query) (int64, error)
 }
 
 // ErrInvalidQuery means a Query referenced an unknown field or used an operator

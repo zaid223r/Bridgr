@@ -68,10 +68,10 @@ operators and pagination are built once, on the Store path only, instead of also
   - [x] `eq, ne, gt, gte, lt, lte, contains, in` (`?age[gte]=18`)
   - [x] escape `LIKE` wildcards, columns only from the whitelist
   - [x] tests incl. injection attempts
-- [ ] **`feat/pagination-sorting`**
-  - [ ] `limit`/`offset` with default + max, `sort=-created_at,title`
-  - [ ] total count, `Link` header
-  - [ ] tests
+- [x] **`feat/pagination-sorting`**
+  - [x] `limit`/`offset` with default + max, `sort=-created_at,title`
+  - [x] total count, `Link` header
+  - [x] tests
 - [ ] **`feat/sqlstore-mysql`**: MySQL dialect + integration tests
 
 ## Phase 3: OpenAPI that generates real clients
