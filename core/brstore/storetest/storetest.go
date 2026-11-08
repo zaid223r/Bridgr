@@ -284,6 +284,7 @@ func testFilters(t *testing.T, newStore NewStore) {
 		{"in", []brstore.Filter{f("qty", brstore.In, []any{int64(0), int64(100), int64(42)})}, []string{"beta nut", "Epsilon Washer"}},
 		{"in strings", []brstore.Filter{f("name", brstore.In, []any{"Gamma Gear", "nope"})}, []string{"Gamma Gear"}},
 		{"nullable eq skips nulls", []brstore.Filter{f("note", brstore.Eq, "third")}, []string{"Gamma Gear"}},
+		{"nullable ne includes nulls", []brstore.Filter{f("note", brstore.Ne, "third")}, []string{"Alpha Bolt", "beta nut", "delta Bolt", "Epsilon Washer"}},
 		{"filters are ANDed", []brstore.Filter{f("active", brstore.Eq, true), f("price", brstore.Eq, 9.5)}, []string{"Alpha Bolt", "Gamma Gear"}},
 		{"no match", []brstore.Filter{f("qty", brstore.Gt, int64(1000))}, []string{}},
 	}

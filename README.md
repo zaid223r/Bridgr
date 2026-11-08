@@ -28,7 +28,9 @@ Turn Go structs into documented REST APIs with one line per resource.
   request context down to the database, and shuts down gracefully on SIGINT/SIGTERM.
 - **Storage** behind one `brstore.Store` interface with typed queries (filters, operators,
   sorting, paging) and a shared contract test suite every backend must pass. Available
-  now: in-memory (`brstore.NewMemory`) and PostgreSQL through GORM (being replaced by a faster `database/sql` layer).
+  now: in-memory (`brstore.NewMemory`), SQLite on `database/sql` with no ORM
+  (`sqlstore.New[T](db, sqlstore.SQLite)`, pure Go via `modernc.org/sqlite`), and
+  PostgreSQL through GORM (being replaced by a faster `database/sql` layer).
 
 ## Quick start
 
@@ -70,9 +72,18 @@ func main() {
 }
 ```
 
-For PostgreSQL, swap the store for `brcrud.RegisterCRUD[Todo](router, "todos", db, nil)` with
-a GORM connection from `brdb.ConnectPostgres` (a faster `database/sql` store is on the
-roadmap). [examples/todoexample](examples/todoexample) shows that version.
+To keep data in SQLite instead, swap the store:
+
+```go
+// import "database/sql"; _ "modernc.org/sqlite"; ".../core/brstore/sqlstore"
+db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
+todos, err := sqlstore.New[Todo](db, sqlstore.SQLite) // table "todos"
+err = todos.CreateTable(ctx)                          // for prototypes; use migrations in production
+```
+
+PostgreSQL currently goes through GORM: `brcrud.RegisterCRUD[Todo](router, "todos", db, nil)`
+with `brdb.ConnectPostgres` (see [examples/todoexample](examples/todoexample)). A
+`database/sql` Postgres dialect is next on the roadmap.
 
 Then try:
 
