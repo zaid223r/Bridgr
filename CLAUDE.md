@@ -17,9 +17,11 @@ quickest way to ship an API in Go: fast to write (one line per resource) and fas
 - **Finish the loop.** A feature is done when: code + tests are in, `make check` passes, the
   feature's boxes in ROADMAP.md are ticked, and README/godoc are updated if the public API
   changed.
-- **Ask before outward-facing actions:** pushing, opening PRs, merging, deleting remote
-  branches, tagging releases, editing the GitHub repo description. Committing on the feature
-  branch is fine once the user okays it.
+- **Standing approval:** the user does not review PRs. Committing, pushing feature
+  branches, opening PRs and squash-merging them once CI is green are pre-approved (given
+  2026-11-08), as is deleting merged branches.
+- **Still ask first:** tagging releases, editing the GitHub repo description or settings,
+  force-pushing anything but your own feature branch, and deleting unmerged work.
 
 ## Branch lifecycle
 
@@ -35,12 +37,11 @@ Every feature goes through the same steps. `main` only changes through merged PR
    - README/godoc are updated if the public API changed
    - the branch is up to date with `main` (rebase onto `origin/main` if `main` moved; resolve
      conflicts locally, never on GitHub)
-4. **Open a PR** (after the user okays the push): title = the main commit's subject, body =
-   what changed, why, how it was tested, and anything left for later.
-5. **Merge** only when **all** of these hold, and only after the user says so:
+4. **Open a PR**: title = the main commit's subject, body = what changed, why, how it was
+   tested, and anything left for later.
+5. **Merge** (pre-approved, see "Standing approval") only when **all** of these hold:
    - CI is green on the PR
    - nothing in the PR is marked TODO/WIP for this feature
-   - the user approved the merge in chat
 
    Use **squash merge** (`gh pr merge --squash --delete-branch`) so `main` has one commit per
    feature. Then `git switch main && git pull --ff-only` and delete the local branch with
