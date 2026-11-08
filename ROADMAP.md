@@ -88,12 +88,23 @@ operators and pagination are built once, on the Store path only, instead of also
   - [ ] tests: `/docs` serves the page with the right spec URL, assets are cached and gzip-served, `DisableDocs` still works
 - [ ] **`example/typescript-client`**: generate a typed TS client (`openapi-typescript`, Bun) and use it from a React + Vite app
 
-## Phase 4: Production features
+## Phase 4: Framework core
 
-- [ ] **`feat/validation`**: struct-tag validation (`validate:"required,max=100"`), 422 with field errors
-- [ ] **`feat/middleware`**: global + per-resource middleware; built-ins: recover, request ID, logging, CORS
-- [ ] **`feat/authorization`**: per-operation authorizer (list/get/create/update/delete), 401/403
-- [ ] **`feat/hooks`**: `BeforeCreate`, `AfterUpdate`, …
+The core stays small: struct → endpoints, storage, OpenAPI, and the hooks modules need to
+plug in. Modules (Phase 8) are built only on these public hooks.
+
+- [ ] **`feat/app`**: one entry point, `bridgr.New(cfg)` → `bridgr.CRUD[T](app, "todos", store, opts)` → `app.Run()`
+  - [ ] root package `bridgr` wraps router, server and docs; existing packages keep working
+- [ ] **`feat/modules`**: the module contract every add-on uses
+  - [ ] `Module` interface: register routes, middleware and OpenAPI additions; `Start`/`Stop` for background work
+  - [ ] `app.Use(...)`, ordered start and reverse-order graceful stop
+  - [ ] `moduletest`: a contract suite every module repo runs (registers cleanly, starts/stops within the timeout, its OpenAPI additions are valid, works next to other modules)
+- [ ] **`feat/capabilities`**: shared interfaces so modules cooperate without importing each other
+  - [ ] capability registry: a module provides an interface (`app.Provide`), others look it up by type (`bridgr.Lookup[jobs.Scheduler]`-style, defined in core)
+  - [ ] core interfaces: caller identity in the request context, scheduler, key-value store with TTL, resource events (created/updated/deleted), field-level validation errors
+  - [ ] in-memory reference implementations in core, used by `moduletest` and when a module is absent
+- [ ] **`feat/middleware`**: global + per-resource middleware; built-ins: recover, request ID, CORS
+- [ ] **`feat/hooks`**: per-resource `BeforeCreate`, `AfterUpdate`, … for business rules
 - [ ] **`feat/typed-handlers`**: `bridgr.Handle[In, Out]` for custom endpoints, documented in OpenAPI automatically
 
 ## Phase 5: Speed
@@ -107,13 +118,38 @@ operators and pagination are built once, on the Store path only, instead of also
 - [ ] **`feat/mongostore`**: MongoDB adapter as a separate module, passes the contract suite
 - [ ] **`feat/mongo-filters`**: filter operators, pagination and ObjectID support on MongoDB
 
-## Phase 7: Release
+## Phase 7: Core release
 
 - [ ] **`docs/guides`**: README rewrite, runnable godoc `Example` tests, pkg.go.dev polish
 - [ ] **`release/v0.1.0`**: CHANGELOG, tag, GitHub release
 
+## Phase 8: Modules (after the core release)
+
+Each module is its **own repository** (`github.com/zaid223r/bridgr-<name>`) with its own
+`go.mod`, CI and releases. They stay fully compatible with each other because:
+
+- they import **only the core**, never each other; they cooperate through the core's
+  capability interfaces (identity, scheduler, key-value store, events, validation errors)
+- every module runs the core's **`moduletest`** contract suite in its CI, against the
+  latest core release and core `main`
+- **versions line up**: the module API only changes in a core major version, and every
+  module's major version matches the core's (bridgr v1 ↔ bridgr-auth v1.x, …)
+- a **`bridgr-compat`** repository builds one app with every module enabled and runs it on
+  each core or module release, so incompatibilities show up before users see them
+
+Setup comes first: **`bridgr-module-template`** (repo template: go.mod, CI with
+`moduletest`, lint, CLAUDE.md conventions) and **`bridgr-compat`**. Creating the repos
+needs the user's okay. Module order is decided when the core ships.
+
+- [ ] **`bridgr-validate`**: struct-tag validation (`validate:"required,max=100"`), 422 with field errors, rules reflected in the OpenAPI schema
+- [ ] **`bridgr-auth`**: API keys and JWT bearer tokens, per-operation authorization, OpenAPI security schemes
+- [ ] **`bridgr-jobs`**: scheduled jobs (cron and intervals), retries, graceful stop, one-runner locking across instances
+- [ ] **`bridgr-ratelimit`**: per-client and per-route limits, 429 with `Retry-After`; in-memory and Redis
+- [ ] **`bridgr-cache`**: response caching with `ETag` / `If-None-Match`; in-memory and Redis
+- [ ] **`bridgr-events`**: events on create/update/delete; signed webhooks with retries (delivered through the core scheduler capability, so `bridgr-jobs` is used when present)
+- [ ] **`bridgr-uploads`**: multipart uploads to disk or S3-compatible storage, linked to records
+
 ## Later (not scheduled)
 
-- CLI: `bridgr new`, scaffolding, codegen for React components (from the original idea)
+- CLI: `bridgr new`, project scaffolding
 - Migrations, relations/preloading, soft delete, multi-tenancy
-

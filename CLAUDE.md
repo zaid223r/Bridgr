@@ -1,8 +1,29 @@
 # Bridgr: working agreement for Claude
 
-Bridgr turns Go structs into fast, fully documented REST APIs. The goal is to be the
-quickest way to ship an API in Go: fast to write (one line per resource) and fast at runtime
-(no reflection on the hot path, no heavy ORM).
+Bridgr is a modular Go framework: **the bridge from a Go struct to a production API.** The
+core turns a struct into fast, fully documented REST endpoints; everything else (auth,
+validation, scheduled jobs, rate limiting, caching, events/webhooks, uploads) is a module
+built on the core. The goal is the quickest way to ship an API in Go: fast to write (one
+line per resource) and fast at runtime (no reflection on the hot path, no ORM).
+
+**Current focus: the core.** Modules are planned (ROADMAP Phase 8) but not started until
+the core is released. Don't add module features to the core.
+
+## Architecture rules
+
+- **Core** = this repository: `core/*`, `api`, and (soon) the root `bridgr` package: struct
+  schema, storage contract and stores, CRUD routing, errors, server, OpenAPI, and everything
+  modules need to plug in and cooperate (module interface, capability interfaces and
+  registry, middleware, hooks, the `moduletest` contract suite).
+- **Modules** are separate repositories, `github.com/zaid223r/bridgr-<name>`, each with its
+  own `go.mod`, CI and releases. They import the core's public API only, never each other;
+  the core never imports a module.
+- **Compatibility** comes from the core: modules cooperate only through core capability
+  interfaces, every module runs `moduletest` in CI, module major versions match the core's,
+  and the `bridgr-compat` repo runs all modules together.
+- If a module needs something the core doesn't expose, add a general extension point or
+  capability interface to the core, not module-specific code. Changing a capability
+  interface is a breaking change for every module: only in a core major version.
 
 ## How we work
 
