@@ -151,11 +151,15 @@ Then try:
 
 The same example is runnable: `go run ./examples/quickstart`.
 
+**Typed TypeScript clients:** [examples/typescript-client](examples/typescript-client) is a
+React + Vite app on a client generated from the OpenAPI document with `openapi-typescript`.
+Change the Go struct, run `bun run gen`, and the frontend won't compile until it matches.
+
 ## Where it's going
 
 The core comes first: a single `bridgr.App` entry point, a module contract (routes,
 middleware, OpenAPI additions, background workers) with shared capability interfaces,
-middleware and hooks, typed custom endpoints, a typed TypeScript client example, published benchmarks
+middleware and hooks, typed custom endpoints, published benchmarks
 and MongoDB, then a `v0.1.0` release of the core.
 
 After that, modules, each in **its own repository** (`bridgr-<name>`) so you only add

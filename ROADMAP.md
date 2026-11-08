@@ -86,7 +86,9 @@ operators and pagination are built once, on the Store path only, instead of also
   - [x] options: page title, theme, dark mode, and an opt-in to load the pinned bundle from a CDN instead (smaller binary)
   - [x] remove the Swagger UI handler; `/openapi.json` unchanged
   - [x] tests: `/docs` serves the page with the right spec URL, assets are cached and gzip-served, `DisableDocs` still works
-- [ ] **`example/typescript-client`**: generate a typed TS client (`openapi-typescript`, Bun) and use it from a React + Vite app
+- [x] **`example/typescript-client`**: generate a typed TS client (`openapi-typescript`, Bun) and use it from a React + Vite app
+  - [x] `bun run gen` writes the spec from the Go code and regenerates the types; CI fails if they are stale
+  - [x] the app uses typed list filters and paging, POST with `TodoInput`, PATCH, DELETE and typed `Problem` errors
 
 ## Phase 4: Framework core
 
