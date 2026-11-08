@@ -61,9 +61,9 @@ operators and pagination are built once, on the Store path only, instead of also
   - [x] `db:"column,pk"` struct tags (gorm tags still read for migration)
   - [x] migrate example and README
   - [x] before/after benchmark numbers
-- [ ] **`fix/put-patch-semantics`**: `PUT` replaces, `PATCH` merges
-  - [ ] fixes the bug where `{"done": false}` is silently ignored
-  - [ ] tests for zero values
+- [x] **`fix/put-patch-semantics`**: `PUT` replaces, `PATCH` merges
+  - [x] fixes the bug where `{"done": false}` is silently ignored
+  - [x] tests for zero values
 - [ ] **`feat/filter-operators`**: richer, safe filtering
   - [ ] `eq, ne, gt, gte, lt, lte, contains, in` (`?age[gte]=18`)
   - [ ] escape `LIKE` wildcards, columns only from the whitelist
