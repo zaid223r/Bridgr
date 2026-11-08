@@ -2,9 +2,11 @@
 package brorm
 
 import (
+	"errors"
+	"fmt"
 	"reflect"
 
-	"github.com/zaid223r/Bridgr/errors"
+	"github.com/zaid223r/Bridgr/core/brerrors"
 
 	"gorm.io/gorm"
 )
@@ -52,7 +54,7 @@ func (m *GormModel[T]) List(filters map[string][]string) ([]T, error) {
 		}
 	}
 	if len(invalidFields) > 0 {
-		return nil, &errors.InvalidFilterFieldError{Fields: invalidFields}
+		return nil, &brerrors.InvalidFilterFieldError{Fields: invalidFields}
 	}
 	err := db.Find(&result).Error
 	return result, err
@@ -96,11 +98,12 @@ func getFilterableFields[T any]() map[string]bool {
 	return allowed
 }
 
-// Get returns the row whose primary key is id.
+// Get returns the row whose primary key is id, or an error wrapping
+// brerrors.ErrNotFound.
 func (m *GormModel[T]) Get(id string) (T, error) {
 	var result T
 	err := m.DB.First(&result, "id = ?", id).Error
-	return result, err
+	return result, mapError(err)
 }
 
 // Create inserts input and returns it with generated fields such as the ID filled in.
@@ -109,23 +112,37 @@ func (m *GormModel[T]) Create(input T) (T, error) {
 	return input, err
 }
 
-// Update applies input to the row with primary key id. Zero-valued fields are
-// skipped (GORM Updates semantics), so they cannot be cleared this way.
+// Update applies input to the row with primary key id, or returns an error wrapping
+// brerrors.ErrNotFound. Zero-valued fields are skipped (GORM Updates semantics), so
+// they cannot be cleared this way.
 func (m *GormModel[T]) Update(id string, input T) (T, error) {
-	// update by replacing
 	var existing T
 	if err := m.DB.First(&existing, "id = ?", id).Error; err != nil {
-		return input, err
+		return input, mapError(err)
 	}
 	err := m.DB.Model(&existing).Updates(input).Error
 	return existing, err
 }
 
-// Delete removes the row with primary key id. Deleting a missing row is not an error.
+// Delete removes the row with primary key id, or returns an error wrapping
+// brerrors.ErrNotFound when no row matched.
 func (m *GormModel[T]) Delete(id string) error {
 	var obj T
-	if err := m.DB.Where("id = ?", id).Delete(&obj).Error; err != nil {
-		return err
+	res := m.DB.Where("id = ?", id).Delete(&obj)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return fmt.Errorf("deleting id %s: %w", id, brerrors.ErrNotFound)
 	}
 	return nil
+}
+
+// mapError translates GORM's not-found error into brerrors.ErrNotFound and keeps
+// the original in the chain.
+func mapError(err error) error {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("%w: %w", brerrors.ErrNotFound, err)
+	}
+	return err
 }
