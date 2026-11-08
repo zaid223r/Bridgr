@@ -105,6 +105,7 @@ branch only with `--force-with-lease`, and only after a rebase.
 | NoSQL | `go.mongodb.org/mongo-driver/v2` | separate module |
 | Logging | `log/slog` | |
 | JSON | `encoding/json` behind a codec interface | faster codecs as opt-in modules |
+| API docs UI | Scalar (`@scalar/api-reference`), pinned and embedded | replaces Swagger UI; no CDN at runtime by default |
 | Spec validation (tests only) | `getkin/kin-openapi` | |
 | Integration tests | `compose.yaml` + service containers in CI | no testcontainers: keeps Docker client libraries out of `go.mod` |
 

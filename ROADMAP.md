@@ -79,7 +79,11 @@ operators and pagination are built once, on the Store path only, instead of also
 - [ ] **`feat/openapi-schemas`**: OpenAPI 3.1 with `components`, request + response schemas, error schemas
   - [ ] deterministic output, golden-file tests
 - [ ] **`test/openapi-validation`**: validate the generated spec with `kin-openapi` in tests
-- [ ] **`feat/docs-ui`**: embedded, version-pinned docs UI (no CDN at runtime)
+- [ ] **`feat/docs-ui`**: replace Swagger UI with [Scalar](https://github.com/scalar/scalar) at `/docs`
+  - [ ] `@scalar/api-reference` standalone bundle, version-pinned and embedded with `go:embed` (no CDN at runtime)
+  - [ ] options: page title, theme, dark mode, and an opt-in to load the pinned bundle from a CDN instead (smaller binary)
+  - [ ] remove the Swagger UI handler; `/openapi.json` unchanged
+  - [ ] tests: `/docs` serves the page with the right spec URL, assets are cached and gzip-served, `DisableDocs` still works
 - [ ] **`example/typescript-client`**: generate a typed TS client (`openapi-typescript`, Bun) and use it from a React + Vite app
 
 ## Phase 4: Production features
