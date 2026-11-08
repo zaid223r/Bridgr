@@ -115,7 +115,10 @@ plug in. Modules (Phase 8) are built only on these public hooks.
 - [x] **`feat/hooks`**: per-resource `BeforeCreate`, `AfterUpdate`, … for business rules, and resource events (created/updated/deleted) published to an event bus capability
   - [x] before hooks can change the record or reject the write (mapped like any error); after hooks run only after a successful write
   - [x] `brcap.EventBus` + `MemoryEventBus`; `bridgr.CRUD` publishes to the app's bus, looked up per event
-- [ ] **`feat/typed-handlers`**: `bridgr.Handle[In, Out]` for custom endpoints, documented in OpenAPI automatically
+- [x] **`feat/typed-handlers`**: `bridgr.Handle[In, Out]` for custom endpoints, documented in OpenAPI automatically
+  - [x] `path`, `query`, `header` tags parsed with typed 400s; the rest is the JSON body; `Validate()` on the input gives 422s
+  - [x] `NoContent` → 204; options for operationId, summary, tags, status, documented errors, middleware
+  - [x] wildcard/field mismatches, unsupported types and GET bodies panic at startup
 
 ## Phase 5: Speed
 
