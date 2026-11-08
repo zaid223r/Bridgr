@@ -3,6 +3,7 @@ package brcap
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -278,5 +279,58 @@ func TestSchedulerHandlerReplacement(t *testing.T) {
 	_ = s.Enqueue(t.Context(), "job", nil, EnqueueOptions{})
 	if v := <-got; v != "new" {
 		t.Errorf("ran %q handler", v)
+	}
+}
+
+var _ EventBus = (*MemoryEventBus)(nil)
+
+func TestMemoryEventBus(t *testing.T) {
+	t.Parallel()
+	bus := NewMemoryEventBus()
+	var mu sync.Mutex
+	var got []string
+	record := func(name string) func(context.Context, Event) {
+		return func(_ context.Context, e Event) {
+			mu.Lock()
+			defer mu.Unlock()
+			got = append(got, name+":"+e.Action+":"+e.ID)
+		}
+	}
+	unsubA := bus.Subscribe(record("a"))
+	bus.Subscribe(record("b"))
+	var panics []any
+	bus.OnPanic = func(_ Event, v any) { panics = append(panics, v) }
+	bus.Subscribe(func(context.Context, Event) { panic("subscriber bug") })
+	bus.Subscribe(record("c"))
+
+	bus.Publish(t.Context(), Event{Action: Created, ID: "1"})
+	unsubA()
+	unsubA() // idempotent
+	bus.Publish(t.Context(), Event{Action: Deleted, ID: "1"})
+
+	want := []string{"a:created:1", "b:created:1", "c:created:1", "b:deleted:1", "c:deleted:1"}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("deliveries = %v, want %v (in subscription order, a removed, panics contained)", got, want)
+	}
+	if len(panics) != 2 || panics[0] != "subscriber bug" {
+		t.Errorf("OnPanic = %v", panics)
+	}
+}
+
+func TestMemoryEventBusConcurrent(t *testing.T) {
+	t.Parallel()
+	bus := NewMemoryEventBus()
+	var n atomic.Int64
+	var wg sync.WaitGroup
+	for range 20 {
+		wg.Go(func() {
+			unsub := bus.Subscribe(func(context.Context, Event) { n.Add(1) })
+			bus.Publish(t.Context(), Event{Action: Updated})
+			unsub()
+		})
+	}
+	wg.Wait()
+	if n.Load() == 0 {
+		t.Error("no deliveries")
 	}
 }

@@ -112,7 +112,9 @@ plug in. Modules (Phase 8) are built only on these public hooks.
   - [x] panics become logged 500s, for handlers and middleware alike
   - [x] `Config.Middleware` / `app.AddMiddleware`, and per-resource `Options.Middleware`, all `func(http.Handler) http.Handler`
   - [x] `brmw.CORS` with preflight handling; refuses credentials with `*`
-- [ ] **`feat/hooks`**: per-resource `BeforeCreate`, `AfterUpdate`, … for business rules, and resource events (created/updated/deleted) published to an event bus capability
+- [x] **`feat/hooks`**: per-resource `BeforeCreate`, `AfterUpdate`, … for business rules, and resource events (created/updated/deleted) published to an event bus capability
+  - [x] before hooks can change the record or reject the write (mapped like any error); after hooks run only after a successful write
+  - [x] `brcap.EventBus` + `MemoryEventBus`; `bridgr.CRUD` publishes to the app's bus, looked up per event
 - [ ] **`feat/typed-handlers`**: `bridgr.Handle[In, Out]` for custom endpoints, documented in OpenAPI automatically
 
 ## Phase 5: Speed
