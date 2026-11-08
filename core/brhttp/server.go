@@ -37,13 +37,16 @@ type Config struct {
 	MaxBodyBytes int64
 	// Logger receives request and error logs. Default slog.Default().
 	Logger *slog.Logger
-	// DisableDocs skips registering GET /openapi.json and GET /docs.
+	// DisableDocs skips registering GET /openapi.json, GET /docs and the docs
+	// page's script.
 	DisableDocs bool
 	// Title, Version and Description fill the OpenAPI info object. Defaults
 	// "Bridgr API" and "1.0.0".
 	Title       string
 	Version     string
 	Description string
+	// Docs customizes the /docs page (Scalar). Its title defaults to Title.
+	Docs api.DocsOptions
 }
 
 func (c Config) withDefaults() Config {
@@ -85,7 +88,14 @@ func NewServer(router *Router, cfg Config) *Server {
 		router.AddRoute("GET", "/openapi.json", serveSpec(sync.OnceValues(func() ([]byte, error) {
 			return router.Docs().Build(info)
 		})))
-		router.AddRoute("GET", "/docs", api.ServeSwaggerUI())
+		docs := cfg.Docs
+		if docs.Title == "" {
+			docs.Title = cfg.Title
+		}
+		router.AddRoute("GET", "/docs", api.DocsPage("/openapi.json", docs))
+		if !docs.CDN {
+			router.AddRoute("GET", api.ScalarAssetPath, api.ScalarAsset)
+		}
 	}
 	handler := withRequestContext(cfg.Logger, cfg.MaxBodyBytes, router)
 	return &Server{

@@ -43,7 +43,10 @@ brcrud.RegisterCRUD[Todo](router, "todos", store, nil) // 6 endpoints + OpenAPI
   pages that keep your filters. Sorting works on the primary key and filterable fields.
   - A `FilterableFields` entry that isn't a JSON field of the model panics at
     registration, so the mistake stops the program at startup.
-- **OpenAPI 3.1** at `/openapi.json` and a Swagger UI at `/docs`:
+- **OpenAPI 3.1** at `/openapi.json` and a [Scalar](https://github.com/scalar/scalar) API
+  reference at `/docs`. Scalar is pinned and embedded, so docs work offline and need no
+  CDN; `brhttp.Config{Docs: api.DocsOptions{Theme: "moon", DarkMode: true, CDN: true}}`
+  customizes it. The document itself:
   - a schema per model (`Todo`) plus a request schema (`TodoInput`: nothing required,
     generated ids left out), nested structs as their own components
   - every response documented: success bodies, `X-Total-Count`/`Link` headers on lists,
@@ -144,13 +147,15 @@ Then try:
 - `POST /todos` with `{"title":"buy milk"}`
 - `GET /todos?title=milk&done=false` (strings match case-insensitively as substrings;
   repeat a parameter to match any of several values)
-- `GET /docs` for Swagger UI, `GET /openapi.json` for the spec
+- `GET /docs` for the API reference, `GET /openapi.json` for the spec
+
+The same example is runnable: `go run ./examples/quickstart`.
 
 ## Where it's going
 
 The core comes first: a single `bridgr.App` entry point, a module contract (routes,
 middleware, OpenAPI additions, background workers) with shared capability interfaces,
-middleware and hooks, typed custom endpoints, the Scalar docs page, published benchmarks
+middleware and hooks, typed custom endpoints, a typed TypeScript client example, published benchmarks
 and MongoDB, then a `v0.1.0` release of the core.
 
 After that, modules, each in **its own repository** (`bridgr-<name>`) so you only add
