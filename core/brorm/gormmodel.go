@@ -1,3 +1,4 @@
+// Package brorm implements brcrud.BridgrModel on top of GORM.
 package brorm
 
 import (
@@ -8,19 +9,23 @@ import (
 	"gorm.io/gorm"
 )
 
-// Global flag to enable generic filtering for all fields
+// GenericFilteringEnabled makes every query parameter a filter for every model.
+// Unsafe: query keys become column names in SQL. Scheduled for removal.
 var GenericFilteringEnabled = false
 
+// GormModel stores values of T in the table GORM derives from T.
 type GormModel[T any] struct {
 	DB *gorm.DB
 }
 
+// List returns all rows matching filters. String fields match with LIKE, other
+// fields by equality. Keys that are not filterable produce an InvalidFilterFieldError.
 func (m *GormModel[T]) List(filters map[string][]string) ([]T, error) {
 	var result []T
 	allowed := getFilterableFields[T]()
 	var zero T
 	typeOf := reflect.TypeOf(zero)
-	if typeOf.Kind() == reflect.Ptr {
+	if typeOf.Kind() == reflect.Pointer {
 		typeOf = typeOf.Elem()
 	}
 	db := m.DB
@@ -58,7 +63,7 @@ func getFilterableFields[T any]() map[string]bool {
 	var zero T
 	allowed := map[string]bool{}
 	typeOf := reflect.TypeOf(zero)
-	if typeOf.Kind() == reflect.Ptr {
+	if typeOf.Kind() == reflect.Pointer {
 		typeOf = typeOf.Elem()
 	}
 
@@ -91,17 +96,21 @@ func getFilterableFields[T any]() map[string]bool {
 	return allowed
 }
 
+// Get returns the row whose primary key is id.
 func (m *GormModel[T]) Get(id string) (T, error) {
 	var result T
 	err := m.DB.First(&result, "id = ?", id).Error
 	return result, err
 }
 
+// Create inserts input and returns it with generated fields such as the ID filled in.
 func (m *GormModel[T]) Create(input T) (T, error) {
 	err := m.DB.Create(&input).Error
 	return input, err
 }
 
+// Update applies input to the row with primary key id. Zero-valued fields are
+// skipped (GORM Updates semantics), so they cannot be cleared this way.
 func (m *GormModel[T]) Update(id string, input T) (T, error) {
 	// update by replacing
 	var existing T
@@ -112,6 +121,7 @@ func (m *GormModel[T]) Update(id string, input T) (T, error) {
 	return existing, err
 }
 
+// Delete removes the row with primary key id. Deleting a missing row is not an error.
 func (m *GormModel[T]) Delete(id string) error {
 	var obj T
 	if err := m.DB.Where("id = ?", id).Delete(&obj).Error; err != nil {

@@ -4,9 +4,11 @@ import (
 	"reflect"
 )
 
+// ReflectModel maps each field of a struct (or pointer to struct) to an OpenAPI
+// property keyed by its JSON name.
 func ReflectModel(model any) map[string]any {
 	t := reflect.TypeOf(model)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 

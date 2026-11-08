@@ -4,9 +4,10 @@ import (
 	"net/http"
 )
 
+// ServeSwaggerUI returns a handler that serves a Swagger UI page pointed at /openapi.json.
 func ServeSwaggerUI() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`
+		_, _ = w.Write([]byte(`
 <!DOCTYPE html>
 <html>
   <head>

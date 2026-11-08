@@ -1,6 +1,6 @@
 module github.com/zaid223r/Bridgr
 
-go 1.24.4
+go 1.26
 
 require (
 	gorm.io/driver/postgres v1.6.0

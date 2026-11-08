@@ -1,0 +1,108 @@
+# Bridgr roadmap
+
+One feature per day, one branch per feature. Tell Claude **"next"** and it picks up the first
+unchecked feature below. Sub-task boxes are ticked on the feature branch as the work lands;
+the feature's own box is ticked in the branch's last commit, so it reaches `main` together with
+the work when the PR is squash-merged. When to merge,
+park or delete a branch is defined in [CLAUDE.md § Branch lifecycle](CLAUDE.md#branch-lifecycle).
+
+---
+
+## Phase 1: Solid core
+
+- [x] **`chore/project-foundations`**: groundwork for everything else
+  - [x] CLAUDE.md (working agreement and style)
+  - [x] ROADMAP.md (this file)
+  - [x] GitHub Actions CI: build, vet, race tests, golangci-lint on Go 1.26 + 1.27
+  - [x] `Makefile` with `check`, `test`, `integration`, `bench`, `cover`
+  - [x] README: correct import paths, honest feature list, roadmap link
+  - [x] `go.mod` targets Go 1.26
+- [ ] **`feat/stdlib-router`**: replace the hand-written router with `net/http.ServeMux`
+  - [ ] `GET /todos/{id}` patterns, `r.PathValue("id")`
+  - [ ] correct `405 Method Not Allowed` and trailing-slash behaviour
+  - [ ] `httptest` tests for every CRUD route
+- [ ] **`feat/problem-errors`**: consistent errors
+  - [ ] rename `errors` package (it shadows the stdlib)
+  - [ ] RFC 9457 `application/problem+json` responses
+  - [ ] correct codes: 401 vs 403, 404 only for "not found", 500 otherwise, 204 with empty body
+  - [ ] tests for each error path
+- [ ] **`feat/model-schema`**: reflect once, cache forever
+  - [ ] `schema` package: JSON name, DB column, Go kind, primary key, `omitempty`, `json:"-"`
+  - [ ] embedded structs flattened
+  - [ ] cached per type, no reflection on requests
+  - [ ] tests + benchmark
+- [ ] **`feat/fail-fast-registration`**: invalid models fail at startup, not at request time
+  - [ ] validate `FilterableFields` during registration
+  - [ ] remove global `GenericFilteringEnabled` (unsafe: lets any column name reach SQL)
+  - [ ] tests
+- [ ] **`feat/app-lifecycle`**: an `App` type that's ready for production
+  - [ ] server timeouts, graceful shutdown on SIGINT/SIGTERM
+  - [ ] `log/slog` request logging, request-body size limit
+  - [ ] request context passed through to storage
+  - [ ] tests
+
+## Phase 2: Storage (SQL first)
+
+- [ ] **`feat/store-interface`**: one interface for every backend
+  - [ ] `Store[T]` with `Query` (filters, sort, page)
+  - [ ] in-memory store
+  - [ ] reusable **store contract test suite** that every adapter must pass
+- [ ] **`feat/sqlstore-sqlite`**: `database/sql` adapter, SQLite dialect
+  - [ ] precomputed SQL per model, placeholders per dialect
+  - [ ] passes the contract suite
+- [ ] **`fix/put-patch-semantics`**: `PUT` replaces, `PATCH` merges
+  - [ ] fixes the bug where `{"done": false}` is silently ignored
+  - [ ] tests for zero values
+- [ ] **`feat/filter-operators`**: richer, safe filtering
+  - [ ] `eq, ne, gt, gte, lt, lte, like, ilike, in` (`?age[gte]=18`)
+  - [ ] escape `LIKE` wildcards, columns only from the whitelist
+  - [ ] tests incl. injection attempts
+- [ ] **`feat/pagination-sorting`**
+  - [ ] `limit`/`offset` with default + max, `sort=-created_at,title`
+  - [ ] total count, `Link` header
+  - [ ] tests
+- [ ] **`feat/sqlstore-postgres`**: Postgres via `pgx/v5/stdlib`
+  - [ ] `$1` placeholders, `RETURNING`, `ILIKE`
+  - [ ] integration tests (testcontainers + CI service container)
+- [ ] **`chore/remove-gorm`**: drop GORM completely
+  - [ ] migrate example and README
+  - [ ] before/after benchmark numbers
+- [ ] **`feat/sqlstore-mysql`**: MySQL dialect + integration tests
+
+## Phase 3: OpenAPI that generates real clients
+
+- [ ] **`feat/openapi-schemas`**: OpenAPI 3.1 with `components`, request + response schemas, error schemas
+  - [ ] deterministic output, golden-file tests
+- [ ] **`test/openapi-validation`**: validate the generated spec with `kin-openapi` in tests
+- [ ] **`feat/docs-ui`**: embedded, version-pinned docs UI (no CDN at runtime)
+- [ ] **`example/typescript-client`**: generate a typed TS client (`openapi-typescript`, Bun) and use it from a React + Vite app
+
+## Phase 4: Production features
+
+- [ ] **`feat/validation`**: struct-tag validation (`validate:"required,max=100"`), 422 with field errors
+- [ ] **`feat/middleware`**: global + per-resource middleware; built-ins: recover, request ID, logging, CORS
+- [ ] **`feat/authorization`**: per-operation authorizer (list/get/create/update/delete), 401/403
+- [ ] **`feat/hooks`**: `BeforeCreate`, `AfterUpdate`, …
+- [ ] **`feat/typed-handlers`**: `bridgr.Handle[In, Out]` for custom endpoints, documented in OpenAPI automatically
+
+## Phase 5: Speed
+
+- [ ] **`perf/benchmarks`**: reproducible suite vs plain `net/http`, Gin, Echo, Fiber, Huma (separate module)
+- [ ] **`perf/hot-path`**: cut allocations: pooled buffers, prepared statements, precomputed responses
+- [ ] **`feat/json-codecs`**: codec interface, optional faster JSON codec as a separate module
+
+## Phase 6: NoSQL
+
+- [ ] **`feat/mongostore`**: MongoDB adapter as a separate module, passes the contract suite
+- [ ] **`feat/mongo-filters`**: filter operators, pagination and ObjectID support on MongoDB
+
+## Phase 7: Release
+
+- [ ] **`docs/guides`**: README rewrite, runnable godoc `Example` tests, pkg.go.dev polish
+- [ ] **`release/v0.1.0`**: CHANGELOG, tag, GitHub release
+
+## Later (not scheduled)
+
+- CLI: `bridgr new`, scaffolding, codegen for React components (from the original idea)
+- Migrations, relations/preloading, soft delete, multi-tenancy
+
