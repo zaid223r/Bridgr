@@ -17,8 +17,10 @@ type PathInfo struct {
 }
 
 // RegisterPath records an operation so it appears in the generated OpenAPI document.
-// Registering the same method and path twice keeps the last model.
+// Registering the same method and path twice keeps the last model. It panics if
+// model is not a valid model, so BuildSpec never fails on a registered one.
 func RegisterPath(method, path string, model any) {
+	mustSchema(model)
 	mutex.Lock()
 	defer mutex.Unlock()
 	openAPIRoutes[method+" "+path] = &PathInfo{

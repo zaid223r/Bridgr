@@ -14,13 +14,23 @@ import (
 	"gorm.io/gorm"
 )
 
-// GenericFilteringEnabled makes every JSON field of every model filterable.
-// Scheduled for removal; use GenericFiltering on the model instead.
-var GenericFilteringEnabled = false
-
-// GormModel stores values of T in the table GORM derives from T.
+// GormModel stores values of T in the table GORM derives from T. T must have a
+// primary key (see brschema.Model.PrimaryKey); Get, Update and Delete look rows up
+// by its column.
 type GormModel[T any] struct {
 	DB *gorm.DB
+}
+
+// pkWhere returns the "column = ?" condition for T's primary key.
+func pkWhere[T any]() (string, error) {
+	model, err := brschema.Of[T]()
+	if err != nil {
+		return "", err
+	}
+	if model.PrimaryKey == nil {
+		return "", fmt.Errorf("brorm: %s has no primary key", model.Name)
+	}
+	return model.PrimaryKey.Column + " = ?", nil
 }
 
 // List returns all rows matching filters. String fields match with LIKE, other
@@ -35,9 +45,6 @@ func (m *GormModel[T]) List(filters map[string][]string) ([]T, error) {
 	var invalidFields []string
 	for _, key := range slices.Sorted(maps.Keys(filters)) {
 		field, ok := model.FilterField(key)
-		if !ok && GenericFilteringEnabled {
-			field, ok = model.FieldByJSON(key)
-		}
 		if !ok {
 			invalidFields = append(invalidFields, key)
 			continue
@@ -61,7 +68,11 @@ func (m *GormModel[T]) List(filters map[string][]string) ([]T, error) {
 // brerrors.ErrNotFound.
 func (m *GormModel[T]) Get(id string) (T, error) {
 	var result T
-	err := m.DB.First(&result, "id = ?", id).Error
+	where, err := pkWhere[T]()
+	if err != nil {
+		return result, err
+	}
+	err = m.DB.First(&result, where, id).Error
 	return result, mapError(err)
 }
 
@@ -76,10 +87,14 @@ func (m *GormModel[T]) Create(input T) (T, error) {
 // they cannot be cleared this way.
 func (m *GormModel[T]) Update(id string, input T) (T, error) {
 	var existing T
-	if err := m.DB.First(&existing, "id = ?", id).Error; err != nil {
+	where, err := pkWhere[T]()
+	if err != nil {
+		return input, err
+	}
+	if err := m.DB.First(&existing, where, id).Error; err != nil {
 		return input, mapError(err)
 	}
-	err := m.DB.Model(&existing).Updates(input).Error
+	err = m.DB.Model(&existing).Updates(input).Error
 	return existing, err
 }
 
@@ -87,7 +102,11 @@ func (m *GormModel[T]) Update(id string, input T) (T, error) {
 // brerrors.ErrNotFound when no row matched.
 func (m *GormModel[T]) Delete(id string) error {
 	var obj T
-	res := m.DB.Where("id = ?", id).Delete(&obj)
+	where, err := pkWhere[T]()
+	if err != nil {
+		return err
+	}
+	res := m.DB.Where(where, id).Delete(&obj)
 	if res.Error != nil {
 		return res.Error
 	}

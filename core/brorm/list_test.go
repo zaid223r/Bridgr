@@ -27,17 +27,19 @@ func (listTodo) FilterableFields() []string { return []string{"title", "ownerId"
 func dryRunDB(t *testing.T) (*gorm.DB, *string) {
 	t.Helper()
 	db, err := gorm.Open(postgres.New(postgres.Config{DSN: "host=invalid"}), &gorm.Config{
-		DryRun:               true,
-		DisableAutomaticPing: true,
+		DryRun:                 true,
+		DisableAutomaticPing:   true,
+		SkipDefaultTransaction: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	var last string
-	err = db.Callback().Query().After("gorm:query").Register("test:capture", func(tx *gorm.DB) {
-		last = tx.Statement.SQL.String()
-	})
-	if err != nil {
+	capture := func(tx *gorm.DB) { last = tx.Statement.SQL.String() }
+	if err := db.Callback().Query().After("gorm:query").Register("test:capture", capture); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Callback().Delete().After("gorm:delete").Register("test:capture", capture); err != nil {
 		t.Fatal(err)
 	}
 	return db, &last
@@ -76,5 +78,42 @@ func TestListRejectsUnknownFilters(t *testing.T) {
 	}
 	if want := []string{"body", "id; DROP TABLE x"}; !slices.Equal(fieldErr.Fields, want) {
 		t.Errorf("invalid fields = %v, want %v (sorted)", fieldErr.Fields, want)
+	}
+}
+
+type sku struct {
+	Code  string `json:"code" gorm:"primaryKey;column:sku"`
+	Title string `json:"title"`
+}
+
+func TestLookupsUsePrimaryKeyColumn(t *testing.T) {
+	db, last := dryRunDB(t)
+	m := &GormModel[sku]{DB: db}
+
+	ops := map[string]func(){
+		"get":    func() { _, _ = m.Get("A1") },
+		"update": func() { _, _ = m.Update("A1", sku{Title: "x"}) },
+		"delete": func() { _ = m.Delete("A1") },
+	}
+	for name, op := range ops {
+		*last = ""
+		op()
+		if !strings.Contains(*last, "sku = $1") {
+			t.Errorf("%s SQL %q does not look up by the sku column", name, *last)
+		}
+		if strings.Contains(*last, "id =") {
+			t.Errorf("%s SQL %q still uses a hard-coded id column", name, *last)
+		}
+	}
+}
+
+func TestLookupsWithoutPrimaryKeyFail(t *testing.T) {
+	db, _ := dryRunDB(t)
+	type noPK struct {
+		Name string `json:"name"`
+	}
+	m := &GormModel[noPK]{DB: db}
+	if _, err := m.Get("1"); err == nil || !strings.Contains(err.Error(), "no primary key") {
+		t.Errorf("Get err = %v, want a missing primary key error", err)
 	}
 }

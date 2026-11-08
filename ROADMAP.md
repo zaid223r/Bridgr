@@ -31,10 +31,10 @@ park or delete a branch is defined in [CLAUDE.md § Branch lifecycle](CLAUDE.md#
   - [x] embedded structs flattened
   - [x] cached per type, no reflection on requests
   - [x] tests + benchmark
-- [ ] **`feat/fail-fast-registration`**: invalid models fail at startup, not at request time
-  - [ ] validate `FilterableFields` during registration
-  - [ ] remove global `GenericFilteringEnabled` (unsafe: lets any column name reach SQL)
-  - [ ] tests
+- [x] **`feat/fail-fast-registration`**: invalid models fail at startup, not at request time
+  - [x] validate `FilterableFields` during registration
+  - [x] remove global `GenericFilteringEnabled` (unsafe: lets any column name reach SQL)
+  - [x] tests
 - [ ] **`feat/app-lifecycle`**: an `App` type that's ready for production
   - [ ] server timeouts, graceful shutdown on SIGINT/SIGTERM
   - [ ] `log/slog` request logging, request-body size limit

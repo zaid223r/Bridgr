@@ -15,6 +15,8 @@ Turn Go structs into documented REST APIs with one line per resource.
   - `GenericFiltering()` makes every field filterable.
   - String fields match partially (`LIKE`), other fields match exactly.
   - Unknown filter fields return `400`.
+  - A `FilterableFields` entry that isn't a JSON field of the model panics at
+    registration, so the mistake stops the program at startup.
 - **OpenAPI**: `/openapi.json` and a Swagger UI at `/docs`, with filters documented as query
   parameters.
 - **Errors** as [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details
@@ -68,7 +70,6 @@ A runnable version lives in [examples/todoexample](examples/todoexample).
 ## Known limitations (being fixed, see the roadmap)
 
 - `PUT` ignores zero values, so `{"done": false}` doesn't clear a field.
-- Invalid `FilterableFields` are only detected when `/openapi.json` is first requested.
 - List endpoints have no pagination yet.
 
 ## Where it's going

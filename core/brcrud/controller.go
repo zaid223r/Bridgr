@@ -3,6 +3,7 @@ package brcrud
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/zaid223r/Bridgr/api"
@@ -10,6 +11,7 @@ import (
 	"github.com/zaid223r/Bridgr/core/brerrors"
 	"github.com/zaid223r/Bridgr/core/brhttp"
 	"github.com/zaid223r/Bridgr/core/brorm"
+	"github.com/zaid223r/Bridgr/core/brschema"
 
 	"gorm.io/gorm"
 )
@@ -33,12 +35,16 @@ type BridgrOptions[T any] struct {
 //
 // Errors are written as RFC 9457 problem details; see brerrors.FromError for the
 // status mapping.
+//
+// It panics if T is not a valid model, e.g. FilterableFields names a field T
+// doesn't have, so mistakes stop the program at startup.
 func RegisterCRUDRoutes[T any](
 	router *brhttp.Router,
 	path string,
 	model BridgrModel[T],
 	opts *BridgrOptions[T],
 ) {
+	mustModel[T](path)
 	if opts == nil {
 		opts = &BridgrOptions[T]{}
 	}
@@ -155,8 +161,21 @@ func decodeInput[T any](w http.ResponseWriter, r *http.Request, validate func(T)
 	return input, true
 }
 
-// RegisterCRUD is RegisterCRUDRoutes backed by a GORM model on db.
+// mustModel parses T's schema and panics with the resource path if it is invalid.
+func mustModel[T any](path string) *brschema.Model {
+	m, err := brschema.Of[T]()
+	if err != nil {
+		panic(fmt.Sprintf("bridgr: registering /%s: %v", path, err))
+	}
+	return m
+}
+
+// RegisterCRUD is RegisterCRUDRoutes backed by a GORM model on db. Besides the
+// checks RegisterCRUDRoutes makes, it panics if T has no primary key.
 func RegisterCRUD[T any](router *brhttp.Router, path string, db *gorm.DB, opts *BridgrOptions[T]) {
+	if mustModel[T](path).PrimaryKey == nil {
+		panic(fmt.Sprintf(`bridgr: registering /%s: %T has no primary key (tag a field gorm:"primaryKey" or name it ID)`, path, *new(T)))
+	}
 	model := &brorm.GormModel[T]{DB: db}
 	RegisterCRUDRoutes(router, path, model, opts)
 }
