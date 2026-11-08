@@ -3,7 +3,6 @@ package api
 
 import (
 	"encoding/json"
-	"reflect"
 )
 
 // BuildSpec renders the OpenAPI 3.0 document for every route registered with RegisterPath.
@@ -12,18 +11,16 @@ func BuildSpec() ([]byte, error) {
 	paths := map[string]any{}
 
 	for _, p := range GetPaths() {
+		model := mustSchema(p.Model)
 		props := ReflectModel(p.Model)
-		// Remove id from POST request body
-		if p.Method == "post" {
-			delete(props, "id")
-		}
-		// Mark id as readOnly for PUT
-		if p.Method == "put" {
-			if v, ok := props["id"].(map[string]string); ok {
-				props["id"] = map[string]any{
-					"type":     v["type"],
-					"readOnly": true,
-				}
+		if pk := model.PrimaryKey; pk != nil {
+			switch p.Method {
+			case "post":
+				delete(props, pk.JSONName)
+			case "put":
+				prop := property(pk)
+				prop["readOnly"] = true
+				props[pk.JSONName] = prop
 			}
 		}
 		pathItem := paths[p.Path]
@@ -47,15 +44,12 @@ func BuildSpec() ([]byte, error) {
 
 		// Add filterable fields as query parameters for GET list endpoints
 		if p.Method == "get" && extractPathParam(p.Path) == "" {
-			for _, name := range getFilterableFieldNames(p.Model) {
-				fieldType := getFieldTypeByJSONTag(p.Model, name)
+			for _, f := range model.Filterable {
 				parameters = append(parameters, map[string]any{
-					"name":     name,
+					"name":     f.JSONName,
 					"in":       "query",
 					"required": false,
-					"schema": map[string]any{
-						"type": fieldType,
-					},
+					"schema":   property(f),
 				})
 			}
 		}
@@ -114,70 +108,4 @@ func extractPathParam(path string) string {
 		return path[start:end]
 	}
 	return ""
-}
-
-// getFilterableFieldNames returns a slice of filterable field names for a model instance
-func getFilterableFieldNames(model any) []string {
-	typeOf := reflect.TypeOf(model)
-	if typeOf.Kind() == reflect.Pointer {
-		typeOf = typeOf.Elem()
-	}
-	var names []string
-	allFields := map[string]struct{}{}
-	for i := 0; i < typeOf.NumField(); i++ {
-		f := typeOf.Field(i)
-		jsonName := f.Tag.Get("json")
-		if jsonName == "" {
-			jsonName = f.Name
-		}
-		allFields[jsonName] = struct{}{}
-	}
-	// Check for GenericFiltering() bool
-	if _, ok := reflect.TypeOf(model).MethodByName("GenericFiltering"); ok {
-		result := reflect.ValueOf(model).MethodByName("GenericFiltering").Call(nil)
-		if len(result) == 1 && result[0].Bool() {
-			for field := range allFields {
-				names = append(names, field)
-			}
-			return names
-		}
-	}
-	// Otherwise, check for FilterableFields()
-	if _, ok := reflect.TypeOf(model).MethodByName("FilterableFields"); ok {
-		vals := reflect.ValueOf(model).MethodByName("FilterableFields").Call(nil)
-		if len(vals) > 0 {
-			for _, v := range vals[0].Interface().([]string) {
-				if _, exists := allFields[v]; !exists {
-					panic("FilterableFields error: field '" + v + "' does not exist in struct " + typeOf.Name())
-				}
-				names = append(names, v)
-			}
-		}
-	}
-	return names
-}
-
-func getFieldTypeByJSONTag(model any, jsonTag string) string {
-	t := reflect.TypeOf(model)
-	if t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
-		tag := f.Tag.Get("json")
-		if tag == jsonTag || (tag == "" && f.Name == jsonTag) {
-			switch f.Type.Kind() {
-			case reflect.Bool:
-				return "boolean"
-			case reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8,
-				reflect.Uint, reflect.Uint64, reflect.Uint32, reflect.Uint16, reflect.Uint8:
-				return "integer"
-			case reflect.Float32, reflect.Float64:
-				return "number"
-			case reflect.String:
-				return "string"
-			}
-		}
-	}
-	return "string"
 }
