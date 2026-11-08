@@ -28,6 +28,8 @@ func TestFromError(t *testing.T) {
 		{"wrapped not found", fmt.Errorf("todo 7: %w", brerrors.ErrNotFound), 404, "", nil},
 		{"unauthenticated", brerrors.ErrUnauthenticated, 401, "", nil},
 		{"forbidden", brerrors.ErrForbidden, 403, "", nil},
+		{"conflict", fmt.Errorf("todo 7: %w", brerrors.ErrConflict), 409, "", nil},
+		{"invalid filter value", &brerrors.InvalidFilterValueError{Field: "done", Value: "maybe", Type: "boolean"}, 400, `invalid value "maybe" for filter done: want boolean`, []string{"done"}},
 		{"internal error is hidden", errors.New("dial tcp 10.0.0.5:5432: connection refused"), 500, "The server could not complete the request.", nil},
 	}
 

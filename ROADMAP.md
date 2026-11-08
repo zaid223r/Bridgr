@@ -43,10 +43,10 @@ park or delete a branch is defined in [CLAUDE.md § Branch lifecycle](CLAUDE.md#
 
 ## Phase 2: Storage (SQL first)
 
-- [ ] **`feat/store-interface`**: one interface for every backend
-  - [ ] `Store[T]` with `Query` (filters, sort, page)
-  - [ ] in-memory store
-  - [ ] reusable **store contract test suite** that every adapter must pass
+- [x] **`feat/store-interface`**: one interface for every backend
+  - [x] `Store[T]` with `Query` (filters, sort, page)
+  - [x] in-memory store
+  - [x] reusable **store contract test suite** that every adapter must pass
 - [ ] **`feat/sqlstore-sqlite`**: `database/sql` adapter, SQLite dialect
   - [ ] precomputed SQL per model, placeholders per dialect
   - [ ] passes the contract suite

@@ -22,6 +22,8 @@ var (
 	ErrUnauthenticated = errors.New("unauthenticated")
 	// ErrForbidden means the caller is known but not allowed to do this (403).
 	ErrForbidden = errors.New("forbidden")
+	// ErrConflict means the write clashes with existing data, e.g. a duplicate key (409).
+	ErrConflict = errors.New("conflict")
 )
 
 // Problem is an RFC 9457 problem details object. Type is omitted when empty,
@@ -53,10 +55,11 @@ func Write(w http.ResponseWriter, p Problem) {
 
 // FromError maps err to a Problem:
 //
-//   - *InvalidFilterFieldError → 400 with the fields in invalid_fields
+//   - *InvalidFilterFieldError, *InvalidFilterValueError → 400 with the fields in invalid_fields
 //   - ErrNotFound → 404
 //   - ErrUnauthenticated → 401
 //   - ErrForbidden → 403
+//   - ErrConflict → 409
 //   - anything else → 500 with a generic detail, so internal messages
 //     (SQL, driver errors) never reach clients
 //
@@ -66,6 +69,9 @@ func FromError(r *http.Request, err error) Problem {
 	if fieldErr, ok := errors.AsType[*InvalidFilterFieldError](err); ok {
 		p = New(http.StatusBadRequest, fieldErr.Error())
 		p.InvalidFields = fieldErr.Fields
+	} else if valueErr, ok := errors.AsType[*InvalidFilterValueError](err); ok {
+		p = New(http.StatusBadRequest, valueErr.Error())
+		p.InvalidFields = []string{valueErr.Field}
 	} else {
 		switch {
 		case errors.Is(err, ErrNotFound):
@@ -74,6 +80,8 @@ func FromError(r *http.Request, err error) Problem {
 			p = New(http.StatusUnauthorized, "")
 		case errors.Is(err, ErrForbidden):
 			p = New(http.StatusForbidden, "")
+		case errors.Is(err, ErrConflict):
+			p = New(http.StatusConflict, "")
 		default:
 			p = New(http.StatusInternalServerError, "The server could not complete the request.")
 		}

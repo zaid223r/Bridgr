@@ -26,9 +26,13 @@ Turn Go structs into documented REST APIs with one line per resource.
 - **Production server**: `brhttp.NewServer` sets read/write/idle timeouts, caps request
   bodies (1 MiB by default, 413 above), logs every request with `log/slog`, passes the
   request context down to the database, and shuts down gracefully on SIGINT/SIGTERM.
-- **Storage**: PostgreSQL through GORM (being replaced by a faster `database/sql` layer).
+- **Storage** behind one `brstore.Store` interface with typed queries (filters, operators,
+  sorting, paging) and a shared contract test suite every backend must pass. Available
+  now: in-memory (`brstore.NewMemory`) and PostgreSQL through GORM (being replaced by a faster `database/sql` layer).
 
 ## Quick start
+
+No database needed: this uses the in-memory store.
 
 ```go
 package main
@@ -37,12 +41,12 @@ import (
 	"log"
 
 	"github.com/zaid223r/Bridgr/core/brcrud"
-	"github.com/zaid223r/Bridgr/core/brdb"
 	"github.com/zaid223r/Bridgr/core/brhttp"
+	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
 type Todo struct {
-	ID    uint   `json:"id" gorm:"primaryKey"`
+	ID    int64  `json:"id"`
 	Title string `json:"title"`
 	Done  bool   `json:"done"`
 }
@@ -51,16 +55,14 @@ type Todo struct {
 func (Todo) GenericFiltering() bool { return true }
 
 func main() {
-	db, err := brdb.ConnectPostgres("user", "password", "localhost", "bridgr", 5432)
+	todos, err := brstore.NewMemory[Todo]()
 	if err != nil {
-		panic(err)
-	}
-	if err := db.AutoMigrate(&Todo{}); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	router := brhttp.NewRouter()
-	brcrud.RegisterCRUD[Todo](router, "todos", db, nil)
+	brcrud.RegisterStore[Todo](router, "todos", todos, nil)
+
 	server := brhttp.NewServer(router, brhttp.Config{Addr: ":8080"})
 	if err := server.ListenAndServe(); err != nil { // stops gracefully on Ctrl+C / SIGTERM
 		log.Fatal(err)
@@ -68,12 +70,16 @@ func main() {
 }
 ```
 
+For PostgreSQL, swap the store for `brcrud.RegisterCRUD[Todo](router, "todos", db, nil)` with
+a GORM connection from `brdb.ConnectPostgres` (a faster `database/sql` store is on the
+roadmap). [examples/todoexample](examples/todoexample) shows that version.
+
 Then try:
 
-- `GET /todos?title=milk&done=false`
+- `POST /todos` with `{"title":"buy milk"}`
+- `GET /todos?title=milk&done=false` (strings match case-insensitively as substrings;
+  repeat a parameter to match any of several values)
 - `GET /docs` for Swagger UI, `GET /openapi.json` for the spec
-
-A runnable version lives in [examples/todoexample](examples/todoexample).
 
 ## Known limitations (being fixed, see the roadmap)
 
