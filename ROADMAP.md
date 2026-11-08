@@ -21,11 +21,11 @@ park or delete a branch is defined in [CLAUDE.md § Branch lifecycle](CLAUDE.md#
   - [x] `GET /todos/{id}` patterns, `r.PathValue("id")`
   - [x] correct `405 Method Not Allowed` and trailing-slash behaviour
   - [x] `httptest` tests for every CRUD route
-- [ ] **`feat/problem-errors`**: consistent errors
-  - [ ] rename `errors` package (it shadows the stdlib)
-  - [ ] RFC 9457 `application/problem+json` responses
-  - [ ] correct codes: 401 vs 403, 404 only for "not found", 500 otherwise, 204 with empty body
-  - [ ] tests for each error path
+- [x] **`feat/problem-errors`**: consistent errors
+  - [x] rename `errors` package (it shadows the stdlib)
+  - [x] RFC 9457 `application/problem+json` responses
+  - [x] correct codes: 401 vs 403, 404 only for "not found", 500 otherwise, 204 with empty body
+  - [x] tests for each error path
 - [ ] **`feat/model-schema`**: reflect once, cache forever
   - [ ] `schema` package: JSON name, DB column, Go kind, primary key, `omitempty`, `json:"-"`
   - [ ] embedded structs flattened

@@ -17,6 +17,10 @@ Turn Go structs into documented REST APIs with one line per resource.
   - Unknown filter fields return `400`.
 - **OpenAPI**: `/openapi.json` and a Swagger UI at `/docs`, with filters documented as query
   parameters.
+- **Errors** as [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details
+  (`application/problem+json`): 400 bad input, 401/403 from your `Auth` func, 404 missing
+  records, 422 failed validation. Internal errors return a generic 500 and are logged, so
+  database messages never leak to clients.
 - **Storage**: PostgreSQL through GORM (being replaced by a faster `database/sql` layer).
 
 ## Quick start
