@@ -88,12 +88,19 @@ operators and pagination are built once, on the Store path only, instead of also
   - [ ] tests: `/docs` serves the page with the right spec URL, assets are cached and gzip-served, `DisableDocs` still works
 - [ ] **`example/typescript-client`**: generate a typed TS client (`openapi-typescript`, Bun) and use it from a React + Vite app
 
-## Phase 4: Production features
+## Phase 4: Framework core
 
-- [ ] **`feat/validation`**: struct-tag validation (`validate:"required,max=100"`), 422 with field errors
-- [ ] **`feat/middleware`**: global + per-resource middleware; built-ins: recover, request ID, logging, CORS
-- [ ] **`feat/authorization`**: per-operation authorizer (list/get/create/update/delete), 401/403
-- [ ] **`feat/hooks`**: `BeforeCreate`, `AfterUpdate`, …
+The core stays small: struct → endpoints, storage, OpenAPI, and the hooks modules need to
+plug in. Modules (Phase 8) are built only on these public hooks.
+
+- [ ] **`feat/app`**: one entry point, `bridgr.New(cfg)` → `bridgr.CRUD[T](app, "todos", store, opts)` → `app.Run()`
+  - [ ] root package `bridgr` wraps router, server and docs; existing packages keep working
+- [ ] **`feat/modules`**: the module contract every add-on uses
+  - [ ] `Module` interface: register routes, middleware and OpenAPI additions; `Start`/`Stop` for background work
+  - [ ] `app.Use(...)`, ordered start and reverse-order graceful stop
+  - [ ] a tiny example module in tests proving the contract
+- [ ] **`feat/middleware`**: global + per-resource middleware; built-ins: recover, request ID, CORS
+- [ ] **`feat/hooks`**: per-resource `BeforeCreate`, `AfterUpdate`, … for business rules
 - [ ] **`feat/typed-handlers`**: `bridgr.Handle[In, Out]` for custom endpoints, documented in OpenAPI automatically
 
 ## Phase 5: Speed
@@ -107,13 +114,26 @@ operators and pagination are built once, on the Store path only, instead of also
 - [ ] **`feat/mongostore`**: MongoDB adapter as a separate module, passes the contract suite
 - [ ] **`feat/mongo-filters`**: filter operators, pagination and ObjectID support on MongoDB
 
-## Phase 7: Release
+## Phase 7: Core release
 
 - [ ] **`docs/guides`**: README rewrite, runnable godoc `Example` tests, pkg.go.dev polish
 - [ ] **`release/v0.1.0`**: CHANGELOG, tag, GitHub release
 
+## Phase 8: Modules (after the core release)
+
+Each module lives in `modules/<name>`, depends only on the core's public API, and gets its
+own `go.mod` when it needs heavy dependencies (Redis, S3, …). Order to be decided when the
+core ships.
+
+- [ ] **`module/validate`**: struct-tag validation (`validate:"required,max=100"`), 422 with field errors, rules reflected in the OpenAPI schema
+- [ ] **`module/auth`**: API keys and JWT bearer tokens, per-operation authorization, OpenAPI security schemes
+- [ ] **`module/jobs`**: scheduled jobs (cron and intervals), retries, graceful stop, one-runner locking across instances
+- [ ] **`module/ratelimit`**: per-client and per-route limits, 429 with `Retry-After`; in-memory and Redis
+- [ ] **`module/cache`**: response caching with `ETag` / `If-None-Match`; in-memory and Redis
+- [ ] **`module/events`**: events on create/update/delete; signed webhooks with retries (delivered through `module/jobs`)
+- [ ] **`module/uploads`**: multipart uploads to disk or S3-compatible storage, linked to records
+
 ## Later (not scheduled)
 
-- CLI: `bridgr new`, scaffolding, codegen for React components (from the original idea)
+- CLI: `bridgr new`, project scaffolding
 - Migrations, relations/preloading, soft delete, multi-tenancy
-

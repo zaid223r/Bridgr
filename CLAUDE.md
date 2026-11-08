@@ -1,8 +1,23 @@
 # Bridgr: working agreement for Claude
 
-Bridgr turns Go structs into fast, fully documented REST APIs. The goal is to be the
-quickest way to ship an API in Go: fast to write (one line per resource) and fast at runtime
-(no reflection on the hot path, no heavy ORM).
+Bridgr is a modular Go framework: **the bridge from a Go struct to a production API.** The
+core turns a struct into fast, fully documented REST endpoints; everything else (auth,
+validation, scheduled jobs, rate limiting, caching, events/webhooks, uploads) is a module
+built on the core. The goal is the quickest way to ship an API in Go: fast to write (one
+line per resource) and fast at runtime (no reflection on the hot path, no ORM).
+
+**Current focus: the core.** Modules are planned (ROADMAP Phase 8) but not started until
+the core is released. Don't add module features to the core.
+
+## Architecture rules
+
+- **Core** = `core/*`, `api`, and (soon) the root `bridgr` package: struct schema, storage
+  contract and stores, CRUD routing, errors, server, OpenAPI, and the extension points
+  modules need (module interface, middleware, hooks).
+- **Modules** live in `modules/<name>`. They import the core's public API only; the core
+  never imports a module. A module with heavy dependencies gets its own `go.mod`.
+- If a module needs something the core doesn't expose, add a general extension point to
+  the core, not module-specific code.
 
 ## How we work
 

@@ -2,12 +2,27 @@
 
 [![CI](https://github.com/zaid223r/Bridgr/actions/workflows/ci.yml/badge.svg)](https://github.com/zaid223r/Bridgr/actions/workflows/ci.yml)
 
-Turn Go structs into documented REST APIs with one line per resource.
+**The bridge from a Go struct to a production API.**
+
+Bridgr is a modular Go framework. Its core turns a struct into documented REST endpoints,
+with storage, filtering, paging and OpenAPI built in. Everything else a real API needs
+plugs in as a module on top of that core: auth, validation, scheduled jobs, rate limiting,
+caching, events and webhooks, and file uploads.
+
+```go
+type Todo struct {
+	ID    int64  `json:"id"`
+	Title string `json:"title"`
+	Done  bool   `json:"done"`
+}
+
+brcrud.RegisterCRUD[Todo](router, "todos", store, nil) // 6 endpoints + OpenAPI
+```
 
 > **Status: early development.** The API will change. Bridgr is being rebuilt in public;
 > see [ROADMAP.md](ROADMAP.md) for what is done and what is next.
 
-## What works today
+## The core: what works today
 
 - **Generic CRUD**: `GET/POST /todos`, `GET/PUT/PATCH/DELETE /todos/{id}` from a single
   call. `PUT` replaces the record (missing fields become zero); `PATCH` changes only the
@@ -133,9 +148,24 @@ Then try:
 
 ## Where it's going
 
-MongoDB as an optional module,
-OpenAPI 3.1 complete enough to generate typed TypeScript clients, validation, auth hooks,
-middleware, and published benchmarks. Full plan: [ROADMAP.md](ROADMAP.md).
+The core comes first: a single `bridgr.App` entry point, a module contract (routes,
+middleware, OpenAPI additions, background workers), middleware and hooks, typed custom
+endpoints, the Scalar docs page, published benchmarks and MongoDB, then a `v0.1.0`
+release of the core.
+
+After that, modules built only on the core's public API:
+
+| Module | What it adds |
+|---|---|
+| `validate` | struct-tag validation, 422 with field errors, rules in the OpenAPI schema |
+| `auth` | API keys and JWT, per-operation authorization, OpenAPI security schemes |
+| `jobs` | scheduled jobs (cron and intervals) with retries and single-runner locking |
+| `ratelimit` | per-client and per-route limits, 429 with `Retry-After` |
+| `cache` | response caching with `ETag` / `If-None-Match` |
+| `events` | events on create/update/delete, signed webhooks with retries |
+| `uploads` | multipart uploads to disk or S3-compatible storage |
+
+Full plan: [ROADMAP.md](ROADMAP.md).
 
 ## Development
 
