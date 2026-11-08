@@ -31,3 +31,18 @@ type InvalidFilterValueError struct {
 func (e *InvalidFilterValueError) Error() string {
 	return fmt.Sprintf("invalid value %q for filter %s: want %s", e.Value, e.Field, e.Type)
 }
+
+// InvalidFilterOperatorError reports an operator that doesn't exist or doesn't
+// apply to the field's type, e.g. ?qty[contains]=1. It is written to clients as
+// 400.
+type InvalidFilterOperatorError struct {
+	Field   string
+	Op      string
+	Allowed []string
+}
+
+// Error names the operator and lists the ones the field supports.
+func (e *InvalidFilterOperatorError) Error() string {
+	return fmt.Sprintf("operator %q is not supported for filter %s; use one of: %s",
+		e.Op, e.Field, strings.Join(e.Allowed, ", "))
+}

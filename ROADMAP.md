@@ -64,10 +64,10 @@ operators and pagination are built once, on the Store path only, instead of also
 - [x] **`fix/put-patch-semantics`**: `PUT` replaces, `PATCH` merges
   - [x] fixes the bug where `{"done": false}` is silently ignored
   - [x] tests for zero values
-- [ ] **`feat/filter-operators`**: richer, safe filtering
-  - [ ] `eq, ne, gt, gte, lt, lte, contains, in` (`?age[gte]=18`)
-  - [ ] escape `LIKE` wildcards, columns only from the whitelist
-  - [ ] tests incl. injection attempts
+- [x] **`feat/filter-operators`**: richer, safe filtering
+  - [x] `eq, ne, gt, gte, lt, lte, contains, in` (`?age[gte]=18`)
+  - [x] escape `LIKE` wildcards, columns only from the whitelist
+  - [x] tests incl. injection attempts
 - [ ] **`feat/pagination-sorting`**
   - [ ] `limit`/`offset` with default + max, `sort=-created_at,title`
   - [ ] total count, `Link` header

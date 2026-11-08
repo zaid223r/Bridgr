@@ -3,6 +3,12 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
+	"slices"
+	"strings"
+
+	"github.com/zaid223r/Bridgr/core/brschema"
+	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
 // BuildSpec renders the OpenAPI 3.0 document for every route registered with RegisterPath.
@@ -45,10 +51,11 @@ func BuildSpec() ([]byte, error) {
 		if p.Method == "get" && extractPathParam(p.Path) == "" {
 			for _, f := range model.Filterable {
 				parameters = append(parameters, map[string]any{
-					"name":     f.JSONName,
-					"in":       "query",
-					"required": false,
-					"schema":   property(f),
+					"name":        f.JSONName,
+					"in":          "query",
+					"required":    false,
+					"schema":      property(f),
+					"description": filterDescription(f),
 				})
 			}
 		}
@@ -107,4 +114,23 @@ func extractPathParam(path string) string {
 		return path[start:end]
 	}
 	return ""
+}
+
+// filterDescription explains a filter parameter and the operators it accepts, which
+// use the name[op]=value form that OpenAPI 3.0 can't express as separate parameters.
+func filterDescription(f *brschema.Field) string {
+	plain := "Exact match."
+	if f.OpenAPIType == "string" && f.Format == "" {
+		plain = "Case-insensitive substring match."
+	}
+	ops := brstore.OpsFor(f)
+	forms := make([]string, len(ops))
+	for i, op := range ops {
+		forms[i] = fmt.Sprintf("%s[%s]", f.JSONName, op)
+	}
+	desc := fmt.Sprintf("%s Repeat to match any of several values. Operators: %s.", plain, strings.Join(forms, ", "))
+	if slices.Contains(ops, brstore.In) {
+		desc += fmt.Sprintf(" %s[in] takes a comma-separated list.", f.JSONName)
+	}
+	return desc
 }

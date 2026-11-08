@@ -550,3 +550,88 @@ func TestPatchValidatesTheMergedValue(t *testing.T) {
 		t.Errorf("rejected patch was stored: %+v", stored)
 	}
 }
+
+func TestFilterOperators(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore(t, seedItems...) // Hex Bolt qty 5 active, wing nut qty 0, Carriage bolt qty 12 active
+	router := newServer(t, store, nil)
+
+	tests := []struct {
+		query string
+		want  []string
+	}{
+		{"?qty[gt]=0", []string{"Hex Bolt", "Carriage bolt"}},
+		{"?qty[gte]=5", []string{"Hex Bolt", "Carriage bolt"}},
+		{"?qty[lt]=5", []string{"wing nut"}},
+		{"?qty[lte]=5", []string{"Hex Bolt", "wing nut"}},
+		{"?qty[ne]=5", []string{"wing nut", "Carriage bolt"}},
+		{"?qty[eq]=12", []string{"Carriage bolt"}},
+		{"?qty[gte]=1&qty[lte]=10", []string{"Hex Bolt"}},
+		{"?qty[in]=0,12", []string{"wing nut", "Carriage bolt"}},
+		{"?qty[in]=0&qty[in]=5", []string{"Hex Bolt", "wing nut"}},
+		{"?title[eq]=Hex%20Bolt", []string{"Hex Bolt"}},
+		{"?title[eq]=hex%20bolt", []string{}},
+		{"?title[contains]=BOLT", []string{"Hex Bolt", "Carriage bolt"}},
+		{"?title[ne]=wing%20nut", []string{"Hex Bolt", "Carriage bolt"}},
+		{"?title[in]=wing%20nut,Hex%20Bolt", []string{"Hex Bolt", "wing nut"}},
+		{"?active[ne]=true", []string{"wing nut"}},
+		{"?active[eq]=true&qty[gt]=6", []string{"Carriage bolt"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			rec := serve(t, router, "GET", "/items"+tt.query, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+			}
+			if got := titles(decode[[]item](t, rec)); !slices.Equal(got, tt.want) {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	serve(t, router, "GET", "/items?qty[gte]=1&qty[in]=2,3&title[eq]=x", "")
+	want := []brstore.Filter{
+		{Field: "qty", Op: brstore.Gte, Value: int64(1)},
+		{Field: "qty", Op: brstore.In, Value: []any{int64(2), int64(3)}},
+		{Field: "title", Op: brstore.Eq, Value: "x"},
+	}
+	if got := fmt.Sprint(store.lastQuery.Filters); got != fmt.Sprint(want) {
+		t.Errorf("query = %s, want %s", got, fmt.Sprint(want))
+	}
+}
+
+func TestFilterOperatorErrors(t *testing.T) {
+	t.Parallel()
+	router := newServer(t, newFakeStore(t, seedItems...), nil)
+
+	tests := []struct {
+		query       string
+		wantDetail  string
+		wantInvalid []string
+	}{
+		{"?qty[between]=1", `operator "between" is not supported for filter qty; use one of: eq, ne, gt, gte, lt, lte, in`, []string{"qty"}},
+		{"?qty[contains]=1", `operator "contains" is not supported for filter qty; use one of: eq, ne, gt, gte, lt, lte, in`, []string{"qty"}},
+		{"?title[gt]=a", `operator "gt" is not supported for filter title; use one of: eq, ne, contains, in`, []string{"title"}},
+		{"?active[in]=true", `operator "in" is not supported for filter active; use one of: eq, ne`, []string{"active"}},
+		{"?qty[]=1", `operator "" is not supported for filter qty; use one of: eq, ne, gt, gte, lt, lte, in`, []string{"qty"}},
+		{"?qty[gt][lt]=1", `operator "gt][lt" is not supported for filter qty; use one of: eq, ne, gt, gte, lt, lte, in`, []string{"qty"}},
+		{"?qty[gt]=1&qty[gt]=2", `invalid value "1,2" for filter qty: want a single value (use [in] for several)`, []string{"qty"}},
+		{"?qty[in]=1,x", `invalid value "x" for filter qty: want integer (int64)`, []string{"qty"}},
+		{"?qty[gte]=lots", `invalid value "lots" for filter qty: want integer (int64)`, []string{"qty"}},
+		{"?price[gt]=1", `invalid filter field: price`, []string{"price"}},
+		{"?nope[eq]=1&nope=2", `invalid filter field: nope`, []string{"nope"}},
+		{"?qty[gt=1", `invalid filter field: qty[gt`, []string{"qty[gt"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			t.Parallel()
+			p := decodeProblem(t, serve(t, router, "GET", "/items"+tt.query, ""), http.StatusBadRequest)
+			if p.Detail != tt.wantDetail {
+				t.Errorf("detail = %q,\nwant %q", p.Detail, tt.wantDetail)
+			}
+			if !slices.Equal(p.InvalidFields, tt.wantInvalid) {
+				t.Errorf("invalid_fields = %v, want %v", p.InvalidFields, tt.wantInvalid)
+			}
+		})
+	}
+}

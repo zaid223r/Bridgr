@@ -15,8 +15,13 @@ Turn Go structs into documented REST APIs with one line per resource.
 - **Filtering** that models opt into:
   - `FilterableFields()` lists the fields that can be filtered.
   - `GenericFiltering()` makes every field filterable.
-  - String fields match partially (`LIKE`), other fields match exactly.
-  - Unknown filter fields return `400`.
+  - `?title=milk`: strings match case-insensitively as substrings; other types match
+    exactly; repeat a parameter to match any of several values.
+  - Operators: `?qty[gte]=3&qty[lt]=10`, `?title[eq]=Buy milk`, `?qty[in]=1,2,3`.
+    Strings support `eq ne contains in`, booleans `eq ne`, numbers and times
+    `eq ne gt gte lt lte in`.
+  - Unknown fields, unsupported operators and unparsable values return `400` with the
+    offending field in `invalid_fields`. Values are always bound as SQL parameters.
   - A `FilterableFields` entry that isn't a JSON field of the model panics at
     registration, so the mistake stops the program at startup.
 - **OpenAPI**: `/openapi.json` and a Swagger UI at `/docs`, with filters documented as query
