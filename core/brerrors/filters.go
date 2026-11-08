@@ -46,3 +46,16 @@ func (e *InvalidFilterOperatorError) Error() string {
 	return fmt.Sprintf("operator %q is not supported for filter %s; use one of: %s",
 		e.Op, e.Field, strings.Join(e.Allowed, ", "))
 }
+
+// InvalidParamError reports a bad paging or sorting parameter, such as limit=0
+// or sort=unknown. It is written to clients as 400.
+type InvalidParamError struct {
+	Param  string
+	Value  string
+	Reason string
+}
+
+// Error names the parameter, the rejected value and why it was rejected.
+func (e *InvalidParamError) Error() string {
+	return fmt.Sprintf("invalid %s %q: %s", e.Param, e.Value, e.Reason)
+}

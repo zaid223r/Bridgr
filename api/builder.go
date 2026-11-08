@@ -49,6 +49,7 @@ func BuildSpec() ([]byte, error) {
 
 		// Add filterable fields as query parameters for GET list endpoints
 		if p.Method == "get" && extractPathParam(p.Path) == "" {
+			parameters = append(parameters, pagingParameters(model)...)
 			for _, f := range model.Filterable {
 				parameters = append(parameters, map[string]any{
 					"name":        f.JSONName,
@@ -133,4 +134,37 @@ func filterDescription(f *brschema.Field) string {
 		desc += fmt.Sprintf(" %s[in] takes a comma-separated list.", f.JSONName)
 	}
 	return desc
+}
+
+// pagingParameters documents the reserved list parameters limit, offset and sort.
+func pagingParameters(model *brschema.Model) []map[string]any {
+	sortable := []string{}
+	if model.PrimaryKey != nil {
+		sortable = append(sortable, model.PrimaryKey.JSONName)
+	}
+	for _, f := range model.Filterable {
+		if !slices.Contains(sortable, f.JSONName) {
+			sortable = append(sortable, f.JSONName)
+		}
+	}
+	params := []map[string]any{
+		{
+			"name": "limit", "in": "query", "required": false,
+			"schema":      map[string]any{"type": "integer", "minimum": 1},
+			"description": "Page size. The server applies a default and a maximum. The response has X-Total-Count and a Link header with first, prev, next and last pages.",
+		},
+		{
+			"name": "offset", "in": "query", "required": false,
+			"schema":      map[string]any{"type": "integer", "minimum": 0},
+			"description": "Number of records to skip.",
+		},
+	}
+	if len(sortable) > 0 {
+		params = append(params, map[string]any{
+			"name": "sort", "in": "query", "required": false,
+			"schema":      map[string]any{"type": "string"},
+			"description": "Comma-separated fields, '-' for descending, e.g. -" + sortable[len(sortable)-1] + ". Sortable: " + strings.Join(sortable, ", ") + ".",
+		})
+	}
+	return params
 }

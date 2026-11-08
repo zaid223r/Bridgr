@@ -60,19 +60,10 @@ func (m *Memory[T]) List(ctx context.Context, q Query) ([]T, error) {
 		return nil, err
 	}
 
-	m.mu.RLock()
-	out := make([]T, 0, len(m.rows))
-	for _, row := range m.rows {
-		ok, err := matchesAll(reflect.ValueOf(row), filters)
-		if err != nil {
-			m.mu.RUnlock()
-			return nil, err
-		}
-		if ok {
-			out = append(out, row)
-		}
+	out, err := m.matching(filters)
+	if err != nil {
+		return nil, err
 	}
-	m.mu.RUnlock()
 
 	slices.SortStableFunc(out, func(a, b T) int {
 		va, vb := reflect.ValueOf(a), reflect.ValueOf(b)
@@ -92,6 +83,35 @@ func (m *Memory[T]) List(ctx context.Context, q Query) ([]T, error) {
 	out = out[start:]
 	if q.Limit > 0 && q.Limit < len(out) {
 		out = out[:q.Limit]
+	}
+	return out, nil
+}
+
+// Count returns how many records match q.Filters.
+func (m *Memory[T]) Count(ctx context.Context, q Query) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	filters, err := m.resolveFilters(q.Filters)
+	if err != nil {
+		return 0, err
+	}
+	out, err := m.matching(filters)
+	return int64(len(out)), err
+}
+
+func (m *Memory[T]) matching(filters []resolvedFilter) ([]T, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	out := make([]T, 0, len(m.rows))
+	for _, row := range m.rows {
+		ok, err := matchesAll(reflect.ValueOf(row), filters)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out = append(out, row)
+		}
 	}
 	return out, nil
 }

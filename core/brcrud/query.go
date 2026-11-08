@@ -1,9 +1,11 @@
 package brcrud
 
 import (
+	"fmt"
 	"maps"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/zaid223r/Bridgr/core/brerrors"
@@ -23,10 +25,23 @@ import (
 //
 // The operators allowed per type come from brstore.OpsFor. Unknown fields,
 // unknown or unsuitable operators and unparsable values return 400 errors.
-func parseQuery(model *brschema.Model, params url.Values) (brstore.Query, error) {
+//
+// The reserved parameters limit, offset and sort page and order the results; see
+// parsePage and parseSort.
+func parseQuery(model *brschema.Model, params url.Values, limits pageLimits) (brstore.Query, error) {
 	var q brstore.Query
+	var err error
+	if q.Limit, q.Offset, err = parsePage(params, limits); err != nil {
+		return q, err
+	}
+	if q.Sort, err = parseSort(model, params.Get("sort")); err != nil {
+		return q, err
+	}
 	var invalid []string
 	for _, key := range slices.Sorted(maps.Keys(params)) {
+		if reservedParams[key] {
+			continue
+		}
 		name, opName, hasOp := splitKey(key)
 		field, ok := model.FilterField(name)
 		if !ok {
@@ -123,4 +138,100 @@ func parseValues(field *brschema.Field, raw []string) ([]any, error) {
 		values = append(values, v)
 	}
 	return values, nil
+}
+
+// reservedParams are query parameters that page and sort instead of filtering.
+var reservedParams = map[string]bool{"limit": true, "offset": true, "sort": true}
+
+type pageLimits struct {
+	def, max int
+}
+
+// parsePage reads limit (1..max, default def) and offset (≥ 0, default 0).
+func parsePage(params url.Values, limits pageLimits) (limit, offset int, err error) {
+	limit = limits.def
+	if raw, ok := single(params, "limit"); ok {
+		n, convErr := strconv.Atoi(raw)
+		if convErr != nil || n < 1 || n > limits.max {
+			return 0, 0, &brerrors.InvalidParamError{Param: "limit", Value: raw, Reason: fmt.Sprintf("want an integer from 1 to %d", limits.max)}
+		}
+		limit = n
+	}
+	if raw, ok := single(params, "offset"); ok {
+		n, convErr := strconv.Atoi(raw)
+		if convErr != nil || n < 0 {
+			return 0, 0, &brerrors.InvalidParamError{Param: "offset", Value: raw, Reason: "want an integer of 0 or more"}
+		}
+		offset = n
+	}
+	for _, p := range []string{"limit", "offset", "sort"} {
+		if len(params[p]) > 1 {
+			return 0, 0, &brerrors.InvalidParamError{Param: p, Value: strings.Join(params[p], ","), Reason: "give it once"}
+		}
+	}
+	return limit, offset, nil
+}
+
+func single(params url.Values, key string) (string, bool) {
+	v, ok := params[key]
+	if !ok || len(v) == 0 {
+		return "", false
+	}
+	return v[0], true
+}
+
+// parseSort reads sort=-qty,title: comma-separated field names, "-" for
+// descending. Only filterable fields and the primary key can be sorted on.
+func parseSort(model *brschema.Model, raw string) ([]brstore.Sort, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	var out []brstore.Sort
+	for part := range strings.SplitSeq(raw, ",") {
+		name, desc := strings.CutPrefix(part, "-")
+		_, filterable := model.FilterField(name)
+		isPK := model.PrimaryKey != nil && model.PrimaryKey.JSONName == name
+		if !filterable && !isPK {
+			return nil, &brerrors.InvalidParamError{Param: "sort", Value: raw, Reason: fmt.Sprintf("can't sort by %q; use %s", name, strings.Join(sortable(model), ", "))}
+		}
+		out = append(out, brstore.Sort{Field: name, Desc: desc})
+	}
+	return out, nil
+}
+
+func sortable(model *brschema.Model) []string {
+	var names []string
+	if model.PrimaryKey != nil {
+		names = append(names, model.PrimaryKey.JSONName)
+	}
+	for _, f := range model.Filterable {
+		if !slices.Contains(names, f.JSONName) {
+			names = append(names, f.JSONName)
+		}
+	}
+	return names
+}
+
+// pageLinks builds an RFC 8288 Link header with first, prev, next and last pages.
+// Other query parameters (filters, sort) are kept.
+func pageLinks(u *url.URL, limit, offset int, total int64) string {
+	link := func(off int, rel string) string {
+		q := u.Query()
+		q.Set("limit", strconv.Itoa(limit))
+		q.Set("offset", strconv.Itoa(off))
+		return fmt.Sprintf(`<%s?%s>; rel="%s"`, u.Path, q.Encode(), rel)
+	}
+	last := 0
+	if total > 0 {
+		last = int((total - 1) / int64(limit) * int64(limit))
+	}
+	links := []string{link(0, "first")}
+	if offset > 0 {
+		links = append(links, link(max(offset-limit, 0), "prev"))
+	}
+	if int64(offset+limit) < total {
+		links = append(links, link(offset+limit, "next"))
+	}
+	links = append(links, link(last, "last"))
+	return strings.Join(links, ", ")
 }

@@ -3,10 +3,12 @@
 package brcrud
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/zaid223r/Bridgr/api"
 	"github.com/zaid223r/Bridgr/core/brcontext"
@@ -28,12 +30,17 @@ type Options[T any] struct {
 	Middlewares []func(http.HandlerFunc) http.HandlerFunc
 	Validate    func(input T) error
 	Auth        func(r *http.Request) error
+
+	// DefaultLimit is the page size when a list request has no limit. Default 50.
+	DefaultLimit int
+	// MaxLimit is the largest limit a client may ask for. Default 200.
+	MaxLimit int
 }
 
 // RegisterCRUD mounts these routes for T under /path, backed by store, and
 // documents them in the OpenAPI spec:
 //
-//	GET    /path       list (see parseQuery for filters)
+//	GET    /path       list (see parseQuery for filters, limit, offset and sort)
 //	POST   /path       create
 //	GET    /path/{id}  get
 //	PUT    /path/{id}  replace: fields missing from the body are reset to zero
@@ -58,6 +65,15 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 	if opts == nil {
 		opts = &Options[T]{}
 	}
+	limits := pageLimits{def: cmp.Or(opts.DefaultLimit, 50), max: cmp.Or(opts.MaxLimit, 200)}
+	if limits.def > limits.max {
+		panic(fmt.Sprintf("bridgr: registering /%s: DefaultLimit %d is above MaxLimit %d", path, limits.def, limits.max))
+	}
+	for _, f := range model.Filterable {
+		if reservedParams[f.JSONName] {
+			panic(fmt.Sprintf("bridgr: registering /%s: field %q can't be filterable; limit, offset and sort are reserved", path, f.JSONName))
+		}
+	}
 
 	base := "/" + path
 
@@ -78,7 +94,7 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 	}
 
 	handle("GET", base, func(w http.ResponseWriter, r *http.Request) {
-		q, err := parseQuery(model, r.URL.Query())
+		q, err := parseQuery(model, r.URL.Query(), limits)
 		if err != nil {
 			brerrors.WriteError(w, r, err)
 			return
@@ -88,6 +104,13 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 			brerrors.WriteError(w, r, err)
 			return
 		}
+		total, err := store.Count(r.Context(), q)
+		if err != nil {
+			brerrors.WriteError(w, r, err)
+			return
+		}
+		w.Header().Set("X-Total-Count", strconv.FormatInt(total, 10))
+		w.Header().Set("Link", pageLinks(r.URL, q.Limit, q.Offset, total))
 		brcontext.JSON(w, http.StatusOK, items)
 	})
 

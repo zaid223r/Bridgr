@@ -27,6 +27,8 @@ func (nopStore[T]) Update(_ context.Context, _ string, in T) (T, error) { return
 
 func (nopStore[T]) Delete(context.Context, string) error { return nil }
 
+func (nopStore[T]) Count(context.Context, brstore.Query) (int64, error) { return 0, nil }
+
 type typoFilter struct {
 	ID    int    `json:"id"`
 	Title string `json:"title"`
@@ -71,6 +73,20 @@ func TestRegistrationFailsFast(t *testing.T) {
 			want: []string{"/strings", "not a struct"},
 		},
 		{
+			name: "default limit above max",
+			register: func(r *brhttp.Router) {
+				brcrud.RegisterCRUD[typoFixed](r, "limits", nopStore[typoFixed]{}, &brcrud.Options[typoFixed]{DefaultLimit: 500, MaxLimit: 100})
+			},
+			want: []string{"/limits", "DefaultLimit 500 is above MaxLimit 100"},
+		},
+		{
+			name: "filterable field with a reserved name",
+			register: func(r *brhttp.Router) {
+				brcrud.RegisterCRUD[reservedName](r, "reserved", nopStore[reservedName]{}, nil)
+			},
+			want: []string{"/reserved", `"sort"`, "reserved"},
+		},
+		{
 			name: "model without primary key",
 			register: func(r *brhttp.Router) {
 				brcrud.RegisterCRUD[noPK](r, "nopk", nopStore[noPK]{}, nil)
@@ -111,3 +127,10 @@ type typoFixed struct {
 }
 
 func (typoFixed) FilterableFields() []string { return []string{"title"} }
+
+type reservedName struct {
+	ID   int    `json:"id"`
+	Sort string `json:"sort"`
+}
+
+func (reservedName) GenericFiltering() bool { return true }
