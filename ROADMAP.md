@@ -56,11 +56,11 @@ operators and pagination are built once, on the Store path only, instead of also
 - [x] **`feat/sqlstore-postgres`**: Postgres dialect (any `database/sql` driver, tested with `pgx/v5/stdlib`)
   - [x] `$1` placeholders, `RETURNING`, `ILIKE`, identity keys kept in sync after explicit ids
   - [x] integration tests (`compose.yaml` locally, service container in CI)
-- [ ] **`chore/remove-gorm`**: drop GORM completely
-  - [ ] CRUD routes take a `brstore.Store`; remove `BridgrModel`, `brorm`, `brdb`
-  - [ ] `db:"column,pk"` struct tags (gorm tags still read for migration)
-  - [ ] migrate example and README
-  - [ ] before/after benchmark numbers
+- [x] **`chore/remove-gorm`**: drop GORM completely
+  - [x] CRUD routes take a `brstore.Store`; remove `BridgrModel`, `brorm`, `brdb`
+  - [x] `db:"column,pk"` struct tags (gorm tags still read for migration)
+  - [x] migrate example and README
+  - [x] before/after benchmark numbers
 - [ ] **`fix/put-patch-semantics`**: `PUT` replaces, `PATCH` merges
   - [ ] fixes the bug where `{"done": false}` is silently ignored
   - [ ] tests for zero values

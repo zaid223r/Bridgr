@@ -108,7 +108,7 @@ branch only with `--force-with-lease`, and only after a rebase.
 | Spec validation (tests only) | `getkin/kin-openapi` | |
 | Integration tests | `compose.yaml` + service containers in CI | no testcontainers: keeps Docker client libraries out of `go.mod` |
 
-GORM is being removed (see ROADMAP). Don't add new code that depends on it.
+No ORM. Storage goes through `brstore.Store`; SQL lives in `sqlstore` dialects. `gorm` struct tags are read only so GORM models migrate unchanged.
 
 ## Commands
 

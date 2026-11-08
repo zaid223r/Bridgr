@@ -24,7 +24,7 @@ import (
 // Widget is the model the contract runs against. It covers every filterable
 // type: integer, float, string, bool, time and a nullable string.
 type Widget struct {
-	ID       int64     `json:"id" gorm:"primaryKey"`
+	ID       int64     `json:"id" db:",pk"`
 	Name     string    `json:"name"`
 	Price    float64   `json:"price"`
 	Qty      int       `json:"qty"`

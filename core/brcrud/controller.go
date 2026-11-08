@@ -1,3 +1,5 @@
+// Package brcrud registers REST CRUD routes for a model type backed by a
+// brstore.Store.
 package brcrud
 
 import (
@@ -10,13 +12,11 @@ import (
 	"github.com/zaid223r/Bridgr/core/brcontext"
 	"github.com/zaid223r/Bridgr/core/brerrors"
 	"github.com/zaid223r/Bridgr/core/brhttp"
-	"github.com/zaid223r/Bridgr/core/brorm"
 	"github.com/zaid223r/Bridgr/core/brschema"
-
-	"gorm.io/gorm"
+	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
-// BridgrOptions customizes the CRUD routes for one resource: middleware, input
+// Options customizes the CRUD routes for one resource: middleware, input
 // validation and an authorization check run before every handler.
 //
 // Auth returns nil to allow the request. Returning an error wrapping
@@ -24,29 +24,28 @@ import (
 // or a middleware); any other error responds 403.
 //
 // A Validate error is sent to the client as 422 with the error text as detail.
-type BridgrOptions[T any] struct {
+type Options[T any] struct {
 	Middlewares []func(http.HandlerFunc) http.HandlerFunc
 	Validate    func(input T) error
 	Auth        func(r *http.Request) error
 }
 
-// RegisterCRUDRoutes mounts list, create, get, update and delete routes for model under
-// /path and documents them in the OpenAPI spec. A nil opts uses the defaults.
+// RegisterCRUD mounts list, create, get, update and delete routes for T under
+// /path, backed by store, and documents them in the OpenAPI spec. A nil opts uses
+// the defaults. See parseQuery for how list query parameters become filters.
 //
 // Errors are written as RFC 9457 problem details; see brerrors.FromError for the
 // status mapping.
 //
-// It panics if T is not a valid model, e.g. FilterableFields names a field T
-// doesn't have, so mistakes stop the program at startup.
-func RegisterCRUDRoutes[T any](
-	router *brhttp.Router,
-	path string,
-	model BridgrModel[T],
-	opts *BridgrOptions[T],
-) {
-	mustModel[T](path)
+// It panics if T is not a valid model (e.g. FilterableFields names a field T
+// doesn't have) or has no primary key, so mistakes stop the program at startup.
+func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store[T], opts *Options[T]) {
+	model := mustModel[T](path)
+	if model.PrimaryKey == nil {
+		panic(fmt.Sprintf(`bridgr: registering /%s: %s has no primary key (tag a field db:",pk" or name it ID)`, path, model.Name))
+	}
 	if opts == nil {
-		opts = &BridgrOptions[T]{}
+		opts = &Options[T]{}
 	}
 
 	base := "/" + path
@@ -67,7 +66,12 @@ func RegisterCRUDRoutes[T any](
 	}
 
 	handle("GET", base, func(w http.ResponseWriter, r *http.Request) {
-		items, err := model.List(r.Context(), r.URL.Query())
+		q, err := parseQuery(model, r.URL.Query())
+		if err != nil {
+			brerrors.WriteError(w, r, err)
+			return
+		}
+		items, err := store.List(r.Context(), q)
 		if err != nil {
 			brerrors.WriteError(w, r, err)
 			return
@@ -80,7 +84,7 @@ func RegisterCRUDRoutes[T any](
 		if !ok {
 			return
 		}
-		created, err := model.Create(r.Context(), input)
+		created, err := store.Create(r.Context(), input)
 		if err != nil {
 			brerrors.WriteError(w, r, err)
 			return
@@ -89,7 +93,7 @@ func RegisterCRUDRoutes[T any](
 	})
 
 	handle("GET", base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
-		item, err := model.Get(r.Context(), r.PathValue("id"))
+		item, err := store.Get(r.Context(), r.PathValue("id"))
 		if err != nil {
 			brerrors.WriteError(w, r, err)
 			return
@@ -102,7 +106,7 @@ func RegisterCRUDRoutes[T any](
 		if !ok {
 			return
 		}
-		updated, err := model.Update(r.Context(), r.PathValue("id"), input)
+		updated, err := store.Update(r.Context(), r.PathValue("id"), input)
 		if err != nil {
 			brerrors.WriteError(w, r, err)
 			return
@@ -111,7 +115,7 @@ func RegisterCRUDRoutes[T any](
 	})
 
 	handle("DELETE", base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if err := model.Delete(r.Context(), r.PathValue("id")); err != nil {
+		if err := store.Delete(r.Context(), r.PathValue("id")); err != nil {
 			brerrors.WriteError(w, r, err)
 			return
 		}
@@ -172,14 +176,4 @@ func mustModel[T any](path string) *brschema.Model {
 		panic(fmt.Sprintf("bridgr: registering /%s: %v", path, err))
 	}
 	return m
-}
-
-// RegisterCRUD is RegisterCRUDRoutes backed by a GORM model on db. Besides the
-// checks RegisterCRUDRoutes makes, it panics if T has no primary key.
-func RegisterCRUD[T any](router *brhttp.Router, path string, db *gorm.DB, opts *BridgrOptions[T]) {
-	if mustModel[T](path).PrimaryKey == nil {
-		panic(fmt.Sprintf(`bridgr: registering /%s: %T has no primary key (tag a field gorm:"primaryKey" or name it ID)`, path, *new(T)))
-	}
-	model := &brorm.GormModel[T]{DB: db}
-	RegisterCRUDRoutes(router, path, model, opts)
 }
