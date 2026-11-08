@@ -72,7 +72,7 @@ operators and pagination are built once, on the Store path only, instead of also
   - [x] `limit`/`offset` with default + max, `sort=-created_at,title`
   - [x] total count, `Link` header
   - [x] tests
-- [ ] **`feat/sqlstore-mysql`**: MySQL dialect + integration tests
+- [x] **`feat/sqlstore-mysql`**: MySQL dialect + integration tests
 
 ## Phase 3: OpenAPI that generates real clients
 

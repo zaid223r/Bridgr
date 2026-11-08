@@ -33,8 +33,9 @@ type Store[T any] struct {
 	countSQL          string // SELECT COUNT(*) FROM table
 	getSQL            string
 	insertSQL         string // every column
-	insertGeneratedPK string // every column but the key, RETURNING key
+	insertGeneratedPK string // every column but the key (RETURNING key where supported)
 	updateSQL         string
+	existsSQL         string
 	deleteSQL         string
 	insertFields      []*brschema.Field
 	insertNoPKFields  []*brschema.Field
@@ -108,7 +109,12 @@ func (s *Store[T]) build() {
 	s.getSQL = s.selectSQL + " WHERE " + pkCol + " = " + s.dialect.Placeholder(1)
 	s.deleteSQL = "DELETE FROM " + table + " WHERE " + pkCol + " = " + s.dialect.Placeholder(1)
 	s.insertSQL = s.insertStatement(s.insertFields, "")
-	s.insertGeneratedPK = s.insertStatement(s.insertNoPKFields, " RETURNING "+pkCol)
+	returning := ""
+	if s.dialect.Returning() {
+		returning = " RETURNING " + pkCol
+	}
+	s.insertGeneratedPK = s.insertStatement(s.insertNoPKFields, returning)
+	s.existsSQL = "SELECT 1 FROM " + table + " WHERE " + pkCol + " = " + s.dialect.Placeholder(1)
 
 	sets := make([]string, len(s.updateFields))
 	for i, f := range s.updateFields {
@@ -221,10 +227,19 @@ func (s *Store[T]) Create(ctx context.Context, value T) (T, error) {
 	pk := fieldAt(rv, s.pk.Index)
 
 	var err error
-	if s.autoPK && pk.IsZero() {
+	switch {
+	case s.autoPK && pk.IsZero() && s.dialect.Returning():
 		err = s.db.QueryRowContext(ctx, s.insertGeneratedPK, s.args(rv, s.insertNoPKFields)...).
 			Scan(pk.Addr().Interface())
-	} else {
+	case s.autoPK && pk.IsZero():
+		var res sql.Result
+		if res, err = s.db.ExecContext(ctx, s.insertGeneratedPK, s.args(rv, s.insertNoPKFields)...); err == nil {
+			var id int64
+			if id, err = res.LastInsertId(); err == nil {
+				setInt(pk, id)
+			}
+		}
+	default:
 		_, err = s.db.ExecContext(ctx, s.insertSQL, s.args(rv, s.insertFields)...)
 		if err == nil && s.autoPK {
 			err = s.syncSequence(ctx)
@@ -257,7 +272,24 @@ func (s *Store[T]) Update(ctx context.Context, id string, value T) (T, error) {
 		}
 		return value, fmt.Errorf("updating %s %s: %w", s.model.Name, id, err)
 	}
-	return value, s.requireRow(res, id)
+	n, err := res.RowsAffected()
+	if err != nil {
+		return value, fmt.Errorf("updating %s %s: %w", s.model.Name, id, err)
+	}
+	if n == 0 {
+		// MySQL counts changed rows, not matched ones, so an update that writes
+		// identical values reports 0. Check that the row exists before calling
+		// it not found.
+		var one int
+		err := s.db.QueryRowContext(ctx, s.existsSQL, key).Scan(&one)
+		if errors.Is(err, sql.ErrNoRows) {
+			return value, fmt.Errorf("%s %s: %w", s.model.Name, id, brerrors.ErrNotFound)
+		}
+		if err != nil {
+			return value, fmt.Errorf("updating %s %s: %w", s.model.Name, id, err)
+		}
+	}
+	return value, nil
 }
 
 // Delete removes the row with primary key id.
@@ -479,6 +511,14 @@ func storable(t reflect.Type) bool {
 		return t.Elem().Kind() == reflect.Uint8
 	default:
 		return false
+	}
+}
+
+func setInt(v reflect.Value, n int64) {
+	if v.CanInt() {
+		v.SetInt(n)
+	} else {
+		v.SetUint(uint64(n))
 	}
 }
 

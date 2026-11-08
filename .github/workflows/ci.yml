@@ -41,8 +41,23 @@ jobs:
           --health-interval 2s
           --health-timeout 5s
           --health-retries 30
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: bridgr
+          MYSQL_DATABASE: bridgr
+          MYSQL_USER: bridgr
+          MYSQL_PASSWORD: bridgr
+        ports:
+          - 53306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -ubridgr -pbridgr"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 60
     env:
       BRIDGR_POSTGRES_DSN: postgres://bridgr:bridgr@localhost:55432/bridgr?sslmode=disable
+      BRIDGR_MYSQL_DSN: bridgr:bridgr@tcp(localhost:53306)/bridgr?parseTime=true
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
