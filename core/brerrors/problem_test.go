@@ -30,6 +30,12 @@ func TestFromError(t *testing.T) {
 		{"forbidden", brerrors.ErrForbidden, 403, "", nil},
 		{"conflict", fmt.Errorf("todo 7: %w", brerrors.ErrConflict), 409, "", nil},
 		{
+			"validation error", &brerrors.ValidationError{Fields: []brerrors.FieldError{
+				{Field: "title", Message: "is required"}, {Field: "priority", Message: "must be 1-3"},
+			}}, 422,
+			"title: is required; priority: must be 1-3", nil,
+		},
+		{
 			"invalid filter operator", &brerrors.InvalidFilterOperatorError{Field: "qty", Op: "contains", Allowed: []string{"eq", "gt"}}, 400,
 			`operator "contains" is not supported for filter qty; use one of: eq, gt`,
 			[]string{"qty"},
@@ -108,5 +114,24 @@ func TestWriteErrorLogsOnlyServerErrors(t *testing.T) {
 		if rec.Code != tt.want {
 			t.Errorf("WriteError(%v): status = %d, want %d", tt.err, rec.Code, tt.want)
 		}
+	}
+}
+
+func TestValidationError(t *testing.T) {
+	t.Parallel()
+	var empty brerrors.ValidationError
+	if empty.OrNil() != nil {
+		t.Error("OrNil on no fields must be nil")
+	}
+	var nilErr *brerrors.ValidationError
+	if nilErr.OrNil() != nil {
+		t.Error("OrNil on a nil pointer must be nil")
+	}
+	errs := &brerrors.ValidationError{}
+	errs.Add("title", "is required")
+	err := errs.OrNil()
+	p := brerrors.FromError(httptest.NewRequest("POST", "/todos", nil), fmt.Errorf("validate: %w", err))
+	if p.Status != 422 || len(p.Errors) != 1 || p.Errors[0] != (brerrors.FieldError{Field: "title", Message: "is required"}) {
+		t.Errorf("problem = %+v", p)
 	}
 }

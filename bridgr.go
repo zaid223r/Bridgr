@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"reflect"
 	"sync"
 	"syscall"
 
@@ -45,6 +46,8 @@ type App struct {
 	started bool
 	server  *brhttp.Server
 	modules []Module
+	// capabilities maps a capability interface type to its implementation.
+	capabilities map[reflect.Type]any
 }
 
 // New returns an App with no routes.
