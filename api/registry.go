@@ -1,43 +1,95 @@
+// Package api builds the OpenAPI 3.1 document for the resources registered on a
+// router and serves the docs UI.
 package api
 
 import (
+	"encoding/json"
 	"sync"
+
+	"github.com/zaid223r/Bridgr/core/brschema"
 )
 
-var (
-	openAPIRoutes = make(map[string]*PathInfo)
-	mutex         = sync.Mutex{}
-)
-
-// PathInfo describes one documented operation: its HTTP method, path pattern and model.
-type PathInfo struct {
-	Method string
-	Path   string
-	Model  any
+// Info is the document's info object.
+type Info struct {
+	Title       string
+	Version     string
+	Description string
 }
 
-// RegisterPath records an operation so it appears in the generated OpenAPI document.
-// Registering the same method and path twice keeps the last model. It panics if
-// model is not a valid model, so BuildSpec never fails on a registered one.
-func RegisterPath(method, path string, model any) {
-	mustSchema(model)
-	mutex.Lock()
-	defer mutex.Unlock()
-	openAPIRoutes[method+" "+path] = &PathInfo{
-		Method: method,
-		Path:   path,
-		Model:  model,
-	}
+// CRUDDocs says which optional behaviour a CRUD resource has, so the document
+// only lists responses that can actually happen.
+type CRUDDocs struct {
+	// Auth adds 401 and 403 responses to every operation.
+	Auth bool
+	// Validate adds 422 responses to create, replace and update.
+	Validate bool
+	// DefaultLimit and MaxLimit document the limit parameter.
+	DefaultLimit int
+	MaxLimit     int
 }
 
-// GetPaths returns a snapshot of all registered operations in no particular order.
-func GetPaths() []*PathInfo {
-	mutex.Lock()
-	defer mutex.Unlock()
+type resource struct {
+	path  string
+	model *brschema.Model
+	docs  CRUDDocs
+}
 
-	var list []*PathInfo
-	for _, v := range openAPIRoutes {
-		list = append(list, v)
+// Registry collects the resources to document. Each router owns one; it is
+// safe for concurrent use.
+type Registry struct {
+	mu        sync.Mutex
+	resources []resource
+}
+
+// NewRegistry returns an empty Registry.
+func NewRegistry() *Registry {
+	return &Registry{}
+}
+
+// AddCRUD documents the six CRUD operations of a resource mounted at /path.
+func (r *Registry) AddCRUD(path string, model *brschema.Model, docs CRUDDocs) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.resources = append(r.resources, resource{path: path, model: model, docs: docs})
+}
+
+// Build renders the OpenAPI 3.1 document as indented JSON. The output is
+// deterministic: the same registrations always produce the same bytes.
+func (r *Registry) Build(info Info) ([]byte, error) {
+	r.mu.Lock()
+	resources := append([]resource(nil), r.resources...)
+	r.mu.Unlock()
+
+	g := newSchemaGen()
+	paths := map[string]any{}
+	tags := make([]map[string]any, 0, len(resources))
+	for _, res := range resources {
+		for path, item := range g.pathItems(res) {
+			paths[path] = item
+		}
+		tags = append(tags, map[string]any{"name": res.path})
 	}
-	return list
+
+	if info.Title == "" {
+		info.Title = "Bridgr API"
+	}
+	if info.Version == "" {
+		info.Version = "1.0.0"
+	}
+	infoObj := map[string]any{"title": info.Title, "version": info.Version}
+	if info.Description != "" {
+		infoObj["description"] = info.Description
+	}
+
+	doc := map[string]any{
+		"openapi": "3.1.0",
+		"info":    infoObj,
+		"tags":    tags,
+		"paths":   paths,
+		"components": map[string]any{
+			"schemas":   g.components,
+			"responses": problemResponses(),
+		},
+	}
+	return json.MarshalIndent(doc, "", "  ")
 }

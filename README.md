@@ -28,8 +28,15 @@ Turn Go structs into documented REST APIs with one line per resource.
   pages that keep your filters. Sorting works on the primary key and filterable fields.
   - A `FilterableFields` entry that isn't a JSON field of the model panics at
     registration, so the mistake stops the program at startup.
-- **OpenAPI**: `/openapi.json` and a Swagger UI at `/docs`, with filters documented as query
-  parameters.
+- **OpenAPI 3.1** at `/openapi.json` and a Swagger UI at `/docs`:
+  - a schema per model (`Todo`) plus a request schema (`TodoInput`: nothing required,
+    generated ids left out), nested structs as their own components
+  - every response documented: success bodies, `X-Total-Count`/`Link` headers on lists,
+    and each possible error as an RFC 9457 `Problem`
+  - stable operation ids (`listTodos`, `createTodo`, `getTodo`, `replaceTodo`,
+    `updateTodo`, `deleteTodo`) for client generators
+  - filters, operators, `limit`/`offset`/`sort` documented as query parameters
+  - title and version from `brhttp.Config{Title, Version}`
 - **Errors** as [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details
   (`application/problem+json`): 400 bad input, 401/403 from your `Auth` func, 404 missing
   records, 422 failed validation. Internal errors return a generic 500 and are logged, so
