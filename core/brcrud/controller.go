@@ -225,7 +225,10 @@ func decodeInto[T any](w http.ResponseWriter, r *http.Request, input T, validate
 	}
 	if validate != nil {
 		if err := validate(input); err != nil {
-			p := brerrors.New(http.StatusUnprocessableEntity, err.Error())
+			p := brerrors.FromError(r, err)
+			if p.Status != http.StatusUnprocessableEntity {
+				p = brerrors.New(http.StatusUnprocessableEntity, err.Error())
+			}
 			p.Instance = r.URL.Path
 			brerrors.Write(w, p)
 			return input, false

@@ -127,6 +127,25 @@
           "detail": {
             "type": "string"
           },
+          "errors": {
+            "description": "Field-level validation problems (422).",
+            "items": {
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "field",
+                "message"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "instance": {
             "type": "string"
           },

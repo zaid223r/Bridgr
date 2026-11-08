@@ -744,3 +744,26 @@ type countFailingStore struct{ *fakeStore }
 func (countFailingStore) Count(context.Context, brstore.Query) (int64, error) {
 	return 0, errors.New("count exploded")
 }
+
+func TestValidateWithFieldErrors(t *testing.T) {
+	t.Parallel()
+	opts := &brcrud.Options[item]{Validate: func(in item) error {
+		errs := &brerrors.ValidationError{}
+		if in.Title == "" {
+			errs.Add("title", "is required")
+		}
+		if in.Qty < 0 {
+			errs.Add("qty", "must not be negative")
+		}
+		return errs.OrNil()
+	}}
+	router := newServer(t, newFakeStore(t, seedItems...), opts)
+	p := decodeProblem(t, serve(t, router, "POST", "/items", `{"qty":-1}`), http.StatusUnprocessableEntity)
+	want := []brerrors.FieldError{{Field: "title", Message: "is required"}, {Field: "qty", Message: "must not be negative"}}
+	if !slices.Equal(p.Errors, want) || p.Detail != "title: is required; qty: must not be negative" {
+		t.Errorf("problem = %+v", p)
+	}
+	if rec := serve(t, router, "POST", "/items", `{"title":"ok"}`); rec.Code != http.StatusCreated {
+		t.Errorf("valid body: status %d", rec.Code)
+	}
+}

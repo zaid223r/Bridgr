@@ -51,6 +51,11 @@ export interface components {
         /** @description RFC 9457 problem details. */
         Problem: {
             detail?: string;
+            /** @description Field-level validation problems (422). */
+            errors?: {
+                field: string;
+                message: string;
+            }[];
             instance?: string;
             invalid_fields?: string[];
             status: number;

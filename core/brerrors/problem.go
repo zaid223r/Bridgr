@@ -37,6 +37,8 @@ type Problem struct {
 
 	// InvalidFields is an extension member listing rejected filter fields.
 	InvalidFields []string `json:"invalid_fields,omitempty"`
+	// Errors is an extension member listing field-level validation problems.
+	Errors []FieldError `json:"errors,omitempty"`
 }
 
 // New returns a Problem for status with the standard status text as its title.
@@ -57,6 +59,7 @@ func Write(w http.ResponseWriter, p Problem) {
 //
 //   - *InvalidFilterFieldError, *InvalidFilterValueError, *InvalidFilterOperatorError,
 //     *InvalidParamError → 400 with the fields in invalid_fields
+//   - *ValidationError → 422 with one entry per field in errors
 //   - ErrNotFound → 404
 //   - ErrUnauthenticated → 401
 //   - ErrForbidden → 403
@@ -76,6 +79,9 @@ func FromError(r *http.Request, err error) Problem {
 	} else if opErr, ok := errors.AsType[*InvalidFilterOperatorError](err); ok {
 		p = New(http.StatusBadRequest, opErr.Error())
 		p.InvalidFields = []string{opErr.Field}
+	} else if valErr, ok := errors.AsType[*ValidationError](err); ok {
+		p = New(http.StatusUnprocessableEntity, valErr.Error())
+		p.Errors = valErr.Fields
 	} else if paramErr, ok := errors.AsType[*InvalidParamError](err); ok {
 		p = New(http.StatusBadRequest, paramErr.Error())
 		p.InvalidFields = []string{paramErr.Param}

@@ -101,12 +101,14 @@ plug in. Modules (Phase 8) are built only on these public hooks.
   - [x] `Module` interface: register routes, middleware and OpenAPI additions; `Start`/`Stop` for background work
   - [x] `app.Use(...)`, ordered start and reverse-order graceful stop
   - [x] `moduletest`: a contract suite every module repo runs (registers cleanly, starts/stops within the timeout, its OpenAPI additions are valid, works next to other modules)
-- [ ] **`feat/capabilities`**: shared interfaces so modules cooperate without importing each other
-  - [ ] capability registry: a module provides an interface (`app.Provide`), others look it up by type (`bridgr.Lookup[jobs.Scheduler]`-style, defined in core)
-  - [ ] core interfaces: caller identity in the request context, scheduler, key-value store with TTL, resource events (created/updated/deleted), field-level validation errors
-  - [ ] in-memory reference implementations in core, used by `moduletest` and when a module is absent
+- [x] **`feat/capabilities`**: shared interfaces so modules cooperate without importing each other
+  - [x] capability registry: `bridgr.Provide[C]` / `bridgr.Lookup[C]` by interface type
+  - [x] `core/brcap`: caller identity in the request context, key-value store with TTL and counters, scheduler with named handlers and retries
+  - [x] field-level validation errors (`brerrors.ValidationError` → 422 with `errors`)
+  - [x] in-memory implementations (`MemoryKV`, `MemoryScheduler`) for tests and fallbacks
+  - resource events moved to `feat/hooks`, where the CRUD writes that publish them live
 - [ ] **`feat/middleware`**: global + per-resource middleware; built-ins: recover, request ID, CORS
-- [ ] **`feat/hooks`**: per-resource `BeforeCreate`, `AfterUpdate`, … for business rules
+- [ ] **`feat/hooks`**: per-resource `BeforeCreate`, `AfterUpdate`, … for business rules, and resource events (created/updated/deleted) published to an event bus capability
 - [ ] **`feat/typed-handlers`**: `bridgr.Handle[In, Out]` for custom endpoints, documented in OpenAPI automatically
 
 ## Phase 5: Speed

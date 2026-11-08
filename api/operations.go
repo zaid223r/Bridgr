@@ -204,6 +204,18 @@ func problemSchema() map[string]any {
 			"detail":         map[string]any{"type": "string"},
 			"instance":       map[string]any{"type": "string"},
 			"invalid_fields": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"errors": map[string]any{
+				"type":        "array",
+				"description": "Field-level validation problems (422).",
+				"items": map[string]any{
+					"type":     "object",
+					"required": []string{"field", "message"},
+					"properties": map[string]any{
+						"field":   map[string]any{"type": "string"},
+						"message": map[string]any{"type": "string"},
+					},
+				},
+			},
 		},
 	}
 }
