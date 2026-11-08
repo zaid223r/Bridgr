@@ -4,6 +4,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync"
 
 	"github.com/zaid223r/Bridgr/core/brschema"
@@ -37,8 +38,19 @@ type resource struct {
 // Registry collects the resources to document. Each router owns one; it is
 // safe for concurrent use.
 type Registry struct {
-	mu        sync.Mutex
-	resources []resource
+	mu         sync.Mutex
+	resources  []resource
+	transforms []func(doc map[string]any) error
+}
+
+// Transform adds a function that edits the finished document before it is
+// encoded, in registration order. Modules use it to add security schemes,
+// paths for routes they own, or extensions. doc is the decoded JSON object
+// ("paths", "components", ...); returning an error fails Build.
+func (r *Registry) Transform(fn func(doc map[string]any) error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.transforms = append(r.transforms, fn)
 }
 
 // NewRegistry returns an empty Registry.
@@ -58,6 +70,7 @@ func (r *Registry) AddCRUD(path string, model *brschema.Model, docs CRUDDocs) {
 func (r *Registry) Build(info Info) ([]byte, error) {
 	r.mu.Lock()
 	resources := append([]resource(nil), r.resources...)
+	transforms := append([]func(map[string]any) error(nil), r.transforms...)
 	r.mu.Unlock()
 
 	g := newSchemaGen()
@@ -90,6 +103,11 @@ func (r *Registry) Build(info Info) ([]byte, error) {
 			"schemas":   g.components,
 			"responses": problemResponses(),
 		},
+	}
+	for _, fn := range transforms {
+		if err := fn(doc); err != nil {
+			return nil, fmt.Errorf("api: OpenAPI transform: %w", err)
+		}
 	}
 	return json.MarshalIndent(doc, "", "  ")
 }

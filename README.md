@@ -155,6 +155,40 @@ The same example is runnable: `go run ./examples/quickstart`.
 React + Vite app on a client generated from the OpenAPI document with `openapi-typescript`.
 Change the Go struct, run `bun run gen`, and the frontend won't compile until it matches.
 
+## Writing a module
+
+A module is any type with `Name()` and `Register(*bridgr.App) error`. It can add routes
+and OpenAPI entries in `Register`, and run background work with optional
+`Start(ctx)` / `Stop(ctx)` methods, which `app.Run` calls in order and in reverse order on
+shutdown.
+
+```go
+type Health struct{}
+
+func (Health) Name() string { return "health" }
+
+func (Health) Register(app *bridgr.App) error {
+	app.Router().AddRoute("GET", "/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	return nil
+}
+
+// in main:
+if err := app.Use(Health{}); err != nil {
+	log.Fatal(err)
+}
+```
+
+Every module's tests run the core's contract suite, which checks it registers cleanly
+next to other modules, keeps the OpenAPI document valid, and starts and stops on time:
+
+```go
+func TestContract(t *testing.T) {
+	moduletest.Run(t, func() bridgr.Module { return Health{} })
+}
+```
+
 ## Where it's going
 
 The core comes first: a single `bridgr.App` entry point, a module contract (routes,

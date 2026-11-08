@@ -97,10 +97,10 @@ plug in. Modules (Phase 8) are built only on these public hooks.
 
 - [x] **`feat/app`**: one entry point, `bridgr.New(cfg)` → `bridgr.CRUD[T](app, "todos", store, opts)` → `app.Run()`
   - [x] root package `bridgr` wraps router, server and docs; existing packages keep working
-- [ ] **`feat/modules`**: the module contract every add-on uses
-  - [ ] `Module` interface: register routes, middleware and OpenAPI additions; `Start`/`Stop` for background work
-  - [ ] `app.Use(...)`, ordered start and reverse-order graceful stop
-  - [ ] `moduletest`: a contract suite every module repo runs (registers cleanly, starts/stops within the timeout, its OpenAPI additions are valid, works next to other modules)
+- [x] **`feat/modules`**: the module contract every add-on uses
+  - [x] `Module` interface: register routes, middleware and OpenAPI additions; `Start`/`Stop` for background work
+  - [x] `app.Use(...)`, ordered start and reverse-order graceful stop
+  - [x] `moduletest`: a contract suite every module repo runs (registers cleanly, starts/stops within the timeout, its OpenAPI additions are valid, works next to other modules)
 - [ ] **`feat/capabilities`**: shared interfaces so modules cooperate without importing each other
   - [ ] capability registry: a module provides an interface (`app.Provide`), others look it up by type (`bridgr.Lookup[jobs.Scheduler]`-style, defined in core)
   - [ ] core interfaces: caller identity in the request context, scheduler, key-value store with TTL, resource events (created/updated/deleted), field-level validation errors

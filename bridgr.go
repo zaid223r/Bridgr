@@ -44,6 +44,7 @@ type App struct {
 	mu      sync.Mutex
 	started bool
 	server  *brhttp.Server
+	modules []Module
 }
 
 // New returns an App with no routes.
@@ -92,19 +93,23 @@ func (a *App) OpenAPI() ([]byte, error) {
 }
 
 // Handler returns the complete HTTP handler (logging, body limit, routes,
-// OpenAPI and docs), for tests or for mounting under another server.
+// OpenAPI and docs), for tests or for mounting under another server. It does
+// not start modules; call StartModules and StopModules around your own server.
 func (a *App) Handler() http.Handler {
 	return a.start().Handler()
 }
 
-// Run serves on Config.Addr until ctx is cancelled, then shuts down gracefully.
+// Run starts the modules, serves on Config.Addr until ctx is cancelled, shuts
+// the server down gracefully and then stops the modules.
 func (a *App) Run(ctx context.Context) error {
-	return a.start().Run(ctx)
+	srv := a.start()
+	return a.runWithModules(ctx, srv.Run)
 }
 
 // Serve is Run on an existing listener, which it takes ownership of.
 func (a *App) Serve(ctx context.Context, ln net.Listener) error {
-	return a.start().Serve(ctx, ln)
+	srv := a.start()
+	return a.runWithModules(ctx, func(ctx context.Context) error { return srv.Serve(ctx, ln) })
 }
 
 // ListenAndServe runs the app until SIGINT or SIGTERM and returns nil after a
