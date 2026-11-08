@@ -13,9 +13,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/zaid223r/Bridgr/api"
-	"github.com/zaid223r/Bridgr/core/brcrud"
-	"github.com/zaid223r/Bridgr/core/brhttp"
+	bridgr "github.com/zaid223r/Bridgr"
 	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
@@ -30,19 +28,17 @@ type Todo struct {
 // FilterableFields lists what the client can filter and sort on.
 func (Todo) FilterableFields() []string { return []string{"title", "done", "priority"} }
 
-var info = api.Info{Title: "Todo API", Version: "1.0.0"}
-
 func main() {
 	specOut := flag.String("spec", "", "write the OpenAPI document to this file and exit")
 	addr := flag.String("addr", ":8080", "listen address")
 	flag.Parse()
 
-	router, err := newRouter()
+	app, err := newApp(*addr)
 	if err != nil {
 		log.Fatal(err)
 	}
 	if *specOut != "" {
-		doc, err := router.Docs().Build(info)
+		doc, err := app.OpenAPI()
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -52,13 +48,12 @@ func main() {
 		return
 	}
 
-	server := brhttp.NewServer(router, brhttp.Config{Addr: *addr, Title: info.Title, Version: info.Version})
-	if err := server.ListenAndServe(); err != nil {
+	if err := app.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func newRouter() (*brhttp.Router, error) {
+func newApp(addr string) (*bridgr.App, error) {
 	todos, err := brstore.NewMemory[Todo]()
 	if err != nil {
 		return nil, err
@@ -73,8 +68,8 @@ func newRouter() (*brhttp.Router, error) {
 		}
 	}
 
-	router := brhttp.NewRouter()
-	brcrud.RegisterCRUD[Todo](router, "todos", todos, &brcrud.Options[Todo]{
+	app := bridgr.New(bridgr.Config{Addr: addr, Title: "Todo API", Version: "1.0.0"})
+	bridgr.CRUD[Todo](app, "todos", todos, &bridgr.CRUDOptions[Todo]{
 		Validate: func(t Todo) error {
 			if strings.TrimSpace(t.Title) == "" {
 				return errors.New("title is required")
@@ -82,5 +77,5 @@ func newRouter() (*brhttp.Router, error) {
 			return nil
 		},
 	})
-	return router, nil
+	return app, nil
 }

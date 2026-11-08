@@ -11,8 +11,7 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
-	"github.com/zaid223r/Bridgr/core/brcrud"
-	"github.com/zaid223r/Bridgr/core/brhttp"
+	bridgr "github.com/zaid223r/Bridgr"
 	"github.com/zaid223r/Bridgr/core/brstore/sqlstore"
 	"github.com/zaid223r/Bridgr/examples/todoexample/models"
 )
@@ -39,11 +38,11 @@ func run() error {
 		return err
 	}
 
-	router := brhttp.NewRouter()
-	brcrud.RegisterCRUD[models.Todo](router, "todos", todos, nil)
-	brcrud.RegisterCRUD[models.Note](router, "notes", notes, nil)
+	app := bridgr.New(bridgr.Config{Addr: ":8080", Title: "Todo and Note API"})
+	bridgr.CRUD[models.Todo](app, "todos", todos, nil)
+	bridgr.CRUD[models.Note](app, "notes", notes, nil)
 
-	return brhttp.NewServer(router, brhttp.Config{Addr: ":8080"}).ListenAndServe()
+	return app.ListenAndServe()
 }
 
 // newStore opens a Postgres store for T and creates its table if needed.

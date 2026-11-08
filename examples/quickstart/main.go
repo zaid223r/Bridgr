@@ -7,8 +7,7 @@ package main
 import (
 	"log"
 
-	"github.com/zaid223r/Bridgr/core/brcrud"
-	"github.com/zaid223r/Bridgr/core/brhttp"
+	bridgr "github.com/zaid223r/Bridgr"
 	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
@@ -28,11 +27,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	router := brhttp.NewRouter()
-	brcrud.RegisterCRUD[Todo](router, "todos", todos, nil)
+	app := bridgr.New(bridgr.Config{Addr: ":8080", Title: "Todo API"})
+	bridgr.CRUD[Todo](app, "todos", todos, nil)
 
-	server := brhttp.NewServer(router, brhttp.Config{Addr: ":8080", Title: "Todo API"})
-	if err := server.ListenAndServe(); err != nil {
+	if err := app.ListenAndServe(); err != nil { // stops gracefully on Ctrl+C / SIGTERM
 		log.Fatal(err)
 	}
 }

@@ -16,7 +16,9 @@ type Todo struct {
 	Done  bool   `json:"done"`
 }
 
-brcrud.RegisterCRUD[Todo](router, "todos", store, nil) // 6 endpoints + OpenAPI
+app := bridgr.New(bridgr.Config{Addr: ":8080"})
+bridgr.CRUD[Todo](app, "todos", store, nil) // 6 endpoints + OpenAPI + docs
+app.ListenAndServe()
 ```
 
 > **Status: early development.** The API will change. Bridgr is being rebuilt in public;
@@ -61,7 +63,7 @@ brcrud.RegisterCRUD[Todo](router, "todos", store, nil) // 6 endpoints + OpenAPI
   (`application/problem+json`): 400 bad input, 401/403 from your `Auth` func, 404 missing
   records, 422 failed validation. Internal errors return a generic 500 and are logged, so
   database messages never leak to clients.
-- **Production server**: `brhttp.NewServer` sets read/write/idle timeouts, caps request
+- **Production server**: `bridgr.New(bridgr.Config{...})` sets read/write/idle timeouts, caps request
   bodies (1 MiB by default, 413 above), logs every request with `log/slog`, passes the
   request context down to the database, and shuts down gracefully on SIGINT/SIGTERM.
 - **Storage** behind one `brstore.Store` interface with typed queries (filters, operators,
@@ -84,8 +86,7 @@ package main
 import (
 	"log"
 
-	"github.com/zaid223r/Bridgr/core/brcrud"
-	"github.com/zaid223r/Bridgr/core/brhttp"
+	bridgr "github.com/zaid223r/Bridgr"
 	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
@@ -104,11 +105,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	router := brhttp.NewRouter()
-	brcrud.RegisterCRUD[Todo](router, "todos", todos, nil)
+	app := bridgr.New(bridgr.Config{Addr: ":8080", Title: "Todo API"})
+	bridgr.CRUD[Todo](app, "todos", todos, nil)
 
-	server := brhttp.NewServer(router, brhttp.Config{Addr: ":8080"})
-	if err := server.ListenAndServe(); err != nil { // stops gracefully on Ctrl+C / SIGTERM
+	if err := app.ListenAndServe(); err != nil { // stops gracefully on Ctrl+C / SIGTERM
 		log.Fatal(err)
 	}
 }

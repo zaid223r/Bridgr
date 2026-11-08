@@ -95,8 +95,8 @@ operators and pagination are built once, on the Store path only, instead of also
 The core stays small: struct → endpoints, storage, OpenAPI, and the hooks modules need to
 plug in. Modules (Phase 8) are built only on these public hooks.
 
-- [ ] **`feat/app`**: one entry point, `bridgr.New(cfg)` → `bridgr.CRUD[T](app, "todos", store, opts)` → `app.Run()`
-  - [ ] root package `bridgr` wraps router, server and docs; existing packages keep working
+- [x] **`feat/app`**: one entry point, `bridgr.New(cfg)` → `bridgr.CRUD[T](app, "todos", store, opts)` → `app.Run()`
+  - [x] root package `bridgr` wraps router, server and docs; existing packages keep working
 - [ ] **`feat/modules`**: the module contract every add-on uses
   - [ ] `Module` interface: register routes, middleware and OpenAPI additions; `Start`/`Stop` for background work
   - [ ] `app.Use(...)`, ordered start and reverse-order graceful stop
