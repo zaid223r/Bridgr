@@ -59,9 +59,10 @@ func TestBuildSpecUsesSchema(t *testing.T) {
 	var doc struct {
 		Paths map[string]map[string]struct {
 			Parameters []struct {
-				Name   string         `json:"name"`
-				In     string         `json:"in"`
-				Schema map[string]any `json:"schema"`
+				Name        string         `json:"name"`
+				In          string         `json:"in"`
+				Description string         `json:"description"`
+				Schema      map[string]any `json:"schema"`
 			} `json:"parameters"`
 			RequestBody struct {
 				Content map[string]struct {
@@ -86,6 +87,16 @@ func TestBuildSpecUsesSchema(t *testing.T) {
 	}
 	if len(names) != 2 || names[0] != "title" || names[1] != "id" {
 		t.Errorf("list filters = %v, want [title id]", names)
+	}
+	descriptions := map[string]string{}
+	for _, p := range list.Parameters {
+		descriptions[p.Name] = p.Description
+	}
+	if want := "Case-insensitive substring match. Repeat to match any of several values. Operators: title[eq], title[ne], title[contains], title[in]. title[in] takes a comma-separated list."; descriptions["title"] != want {
+		t.Errorf("title description = %q", descriptions["title"])
+	}
+	if want := "Exact match. Repeat to match any of several values. Operators: id[eq], id[ne], id[gt], id[gte], id[lt], id[lte], id[in]. id[in] takes a comma-separated list."; descriptions["id"] != want {
+		t.Errorf("id description = %q", descriptions["id"])
 	}
 
 	post := doc.Paths["/spec-todos"]["post"].RequestBody.Content["application/json"].Schema.Properties

@@ -29,6 +29,11 @@ func TestFromError(t *testing.T) {
 		{"unauthenticated", brerrors.ErrUnauthenticated, 401, "", nil},
 		{"forbidden", brerrors.ErrForbidden, 403, "", nil},
 		{"conflict", fmt.Errorf("todo 7: %w", brerrors.ErrConflict), 409, "", nil},
+		{
+			"invalid filter operator", &brerrors.InvalidFilterOperatorError{Field: "qty", Op: "contains", Allowed: []string{"eq", "gt"}}, 400,
+			`operator "contains" is not supported for filter qty; use one of: eq, gt`,
+			[]string{"qty"},
+		},
 		{"invalid filter value", &brerrors.InvalidFilterValueError{Field: "done", Value: "maybe", Type: "boolean"}, 400, `invalid value "maybe" for filter done: want boolean`, []string{"done"}},
 		{"internal error is hidden", errors.New("dial tcp 10.0.0.5:5432: connection refused"), 500, "The server could not complete the request.", nil},
 	}
