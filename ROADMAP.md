@@ -98,7 +98,11 @@ plug in. Modules (Phase 8) are built only on these public hooks.
 - [ ] **`feat/modules`**: the module contract every add-on uses
   - [ ] `Module` interface: register routes, middleware and OpenAPI additions; `Start`/`Stop` for background work
   - [ ] `app.Use(...)`, ordered start and reverse-order graceful stop
-  - [ ] a tiny example module in tests proving the contract
+  - [ ] `moduletest`: a contract suite every module repo runs (registers cleanly, starts/stops within the timeout, its OpenAPI additions are valid, works next to other modules)
+- [ ] **`feat/capabilities`**: shared interfaces so modules cooperate without importing each other
+  - [ ] capability registry: a module provides an interface (`app.Provide`), others look it up by type (`bridgr.Lookup[jobs.Scheduler]`-style, defined in core)
+  - [ ] core interfaces: caller identity in the request context, scheduler, key-value store with TTL, resource events (created/updated/deleted), field-level validation errors
+  - [ ] in-memory reference implementations in core, used by `moduletest` and when a module is absent
 - [ ] **`feat/middleware`**: global + per-resource middleware; built-ins: recover, request ID, CORS
 - [ ] **`feat/hooks`**: per-resource `BeforeCreate`, `AfterUpdate`, … for business rules
 - [ ] **`feat/typed-handlers`**: `bridgr.Handle[In, Out]` for custom endpoints, documented in OpenAPI automatically
@@ -121,17 +125,29 @@ plug in. Modules (Phase 8) are built only on these public hooks.
 
 ## Phase 8: Modules (after the core release)
 
-Each module lives in `modules/<name>`, depends only on the core's public API, and gets its
-own `go.mod` when it needs heavy dependencies (Redis, S3, …). Order to be decided when the
-core ships.
+Each module is its **own repository** (`github.com/zaid223r/bridgr-<name>`) with its own
+`go.mod`, CI and releases. They stay fully compatible with each other because:
 
-- [ ] **`module/validate`**: struct-tag validation (`validate:"required,max=100"`), 422 with field errors, rules reflected in the OpenAPI schema
-- [ ] **`module/auth`**: API keys and JWT bearer tokens, per-operation authorization, OpenAPI security schemes
-- [ ] **`module/jobs`**: scheduled jobs (cron and intervals), retries, graceful stop, one-runner locking across instances
-- [ ] **`module/ratelimit`**: per-client and per-route limits, 429 with `Retry-After`; in-memory and Redis
-- [ ] **`module/cache`**: response caching with `ETag` / `If-None-Match`; in-memory and Redis
-- [ ] **`module/events`**: events on create/update/delete; signed webhooks with retries (delivered through `module/jobs`)
-- [ ] **`module/uploads`**: multipart uploads to disk or S3-compatible storage, linked to records
+- they import **only the core**, never each other; they cooperate through the core's
+  capability interfaces (identity, scheduler, key-value store, events, validation errors)
+- every module runs the core's **`moduletest`** contract suite in its CI, against the
+  latest core release and core `main`
+- **versions line up**: the module API only changes in a core major version, and every
+  module's major version matches the core's (bridgr v1 ↔ bridgr-auth v1.x, …)
+- a **`bridgr-compat`** repository builds one app with every module enabled and runs it on
+  each core or module release, so incompatibilities show up before users see them
+
+Setup comes first: **`bridgr-module-template`** (repo template: go.mod, CI with
+`moduletest`, lint, CLAUDE.md conventions) and **`bridgr-compat`**. Creating the repos
+needs the user's okay. Module order is decided when the core ships.
+
+- [ ] **`bridgr-validate`**: struct-tag validation (`validate:"required,max=100"`), 422 with field errors, rules reflected in the OpenAPI schema
+- [ ] **`bridgr-auth`**: API keys and JWT bearer tokens, per-operation authorization, OpenAPI security schemes
+- [ ] **`bridgr-jobs`**: scheduled jobs (cron and intervals), retries, graceful stop, one-runner locking across instances
+- [ ] **`bridgr-ratelimit`**: per-client and per-route limits, 429 with `Retry-After`; in-memory and Redis
+- [ ] **`bridgr-cache`**: response caching with `ETag` / `If-None-Match`; in-memory and Redis
+- [ ] **`bridgr-events`**: events on create/update/delete; signed webhooks with retries (delivered through the core scheduler capability, so `bridgr-jobs` is used when present)
+- [ ] **`bridgr-uploads`**: multipart uploads to disk or S3-compatible storage, linked to records
 
 ## Later (not scheduled)
 

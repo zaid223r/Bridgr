@@ -11,13 +11,19 @@ the core is released. Don't add module features to the core.
 
 ## Architecture rules
 
-- **Core** = `core/*`, `api`, and (soon) the root `bridgr` package: struct schema, storage
-  contract and stores, CRUD routing, errors, server, OpenAPI, and the extension points
-  modules need (module interface, middleware, hooks).
-- **Modules** live in `modules/<name>`. They import the core's public API only; the core
-  never imports a module. A module with heavy dependencies gets its own `go.mod`.
-- If a module needs something the core doesn't expose, add a general extension point to
-  the core, not module-specific code.
+- **Core** = this repository: `core/*`, `api`, and (soon) the root `bridgr` package: struct
+  schema, storage contract and stores, CRUD routing, errors, server, OpenAPI, and everything
+  modules need to plug in and cooperate (module interface, capability interfaces and
+  registry, middleware, hooks, the `moduletest` contract suite).
+- **Modules** are separate repositories, `github.com/zaid223r/bridgr-<name>`, each with its
+  own `go.mod`, CI and releases. They import the core's public API only, never each other;
+  the core never imports a module.
+- **Compatibility** comes from the core: modules cooperate only through core capability
+  interfaces, every module runs `moduletest` in CI, module major versions match the core's,
+  and the `bridgr-compat` repo runs all modules together.
+- If a module needs something the core doesn't expose, add a general extension point or
+  capability interface to the core, not module-specific code. Changing a capability
+  interface is a breaking change for every module: only in a core major version.
 
 ## How we work
 

@@ -149,21 +149,25 @@ Then try:
 ## Where it's going
 
 The core comes first: a single `bridgr.App` entry point, a module contract (routes,
-middleware, OpenAPI additions, background workers), middleware and hooks, typed custom
-endpoints, the Scalar docs page, published benchmarks and MongoDB, then a `v0.1.0`
-release of the core.
+middleware, OpenAPI additions, background workers) with shared capability interfaces,
+middleware and hooks, typed custom endpoints, the Scalar docs page, published benchmarks
+and MongoDB, then a `v0.1.0` release of the core.
 
-After that, modules built only on the core's public API:
+After that, modules, each in **its own repository** (`bridgr-<name>`) so you only add
+what you use. They import only the core, never each other, and cooperate through
+interfaces the core defines (caller identity, scheduler, key-value store, events,
+validation errors). Every module runs the core's compatibility test suite in CI, and a
+shared `bridgr-compat` project runs all of them together:
 
 | Module | What it adds |
 |---|---|
-| `validate` | struct-tag validation, 422 with field errors, rules in the OpenAPI schema |
-| `auth` | API keys and JWT, per-operation authorization, OpenAPI security schemes |
-| `jobs` | scheduled jobs (cron and intervals) with retries and single-runner locking |
-| `ratelimit` | per-client and per-route limits, 429 with `Retry-After` |
-| `cache` | response caching with `ETag` / `If-None-Match` |
-| `events` | events on create/update/delete, signed webhooks with retries |
-| `uploads` | multipart uploads to disk or S3-compatible storage |
+| `bridgr-validate` | struct-tag validation, 422 with field errors, rules in the OpenAPI schema |
+| `bridgr-auth` | API keys and JWT, per-operation authorization, OpenAPI security schemes |
+| `bridgr-jobs` | scheduled jobs (cron and intervals) with retries and single-runner locking |
+| `bridgr-ratelimit` | per-client and per-route limits, 429 with `Retry-After` |
+| `bridgr-cache` | response caching with `ETag` / `If-None-Match` |
+| `bridgr-events` | events on create/update/delete, signed webhooks with retries |
+| `bridgr-uploads` | multipart uploads to disk or S3-compatible storage |
 
 Full plan: [ROADMAP.md](ROADMAP.md).
 
