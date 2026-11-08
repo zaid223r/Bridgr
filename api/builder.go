@@ -1,3 +1,4 @@
+// Package api builds the OpenAPI document and serves the docs UI for registered routes.
 package api
 
 import (
@@ -5,6 +6,8 @@ import (
 	"reflect"
 )
 
+// BuildSpec renders the OpenAPI 3.0 document for every route registered with RegisterPath.
+// It panics if a model lists a filterable field that does not exist.
 func BuildSpec() ([]byte, error) {
 	paths := map[string]any{}
 
@@ -116,11 +119,11 @@ func extractPathParam(path string) string {
 // getFilterableFieldNames returns a slice of filterable field names for a model instance
 func getFilterableFieldNames(model any) []string {
 	typeOf := reflect.TypeOf(model)
-	if typeOf.Kind() == reflect.Ptr {
+	if typeOf.Kind() == reflect.Pointer {
 		typeOf = typeOf.Elem()
 	}
 	var names []string
-	var allFields = map[string]struct{}{}
+	allFields := map[string]struct{}{}
 	for i := 0; i < typeOf.NumField(); i++ {
 		f := typeOf.Field(i)
 		jsonName := f.Tag.Get("json")
@@ -156,7 +159,7 @@ func getFilterableFieldNames(model any) []string {
 
 func getFieldTypeByJSONTag(model any, jsonTag string) string {
 	t := reflect.TypeOf(model)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	for i := 0; i < t.NumField(); i++ {

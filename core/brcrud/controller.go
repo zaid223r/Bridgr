@@ -2,30 +2,34 @@ package brcrud
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/zaid223r/Bridgr/api"
 	"github.com/zaid223r/Bridgr/core/brcontext"
 	"github.com/zaid223r/Bridgr/core/brhttp"
 	"github.com/zaid223r/Bridgr/core/brorm"
-	"github.com/zaid223r/Bridgr/errors"
+	brerrors "github.com/zaid223r/Bridgr/errors"
 
 	"gorm.io/gorm"
 )
 
+// BridgrOptions customizes the CRUD routes for one resource: middleware, input
+// validation and an authorization check run before every handler.
 type BridgrOptions[T any] struct {
 	Middlewares []func(http.HandlerFunc) http.HandlerFunc
 	Validate    func(input T) error
 	Auth        func(r *http.Request) bool
 }
 
+// RegisterCRUDRoutes mounts list, create, get, update and delete routes for model under
+// /path and documents them in the OpenAPI spec. A nil opts uses the defaults.
 func RegisterCRUDRoutes[T any](
 	router *brhttp.Router,
 	path string,
 	model BridgrModel[T],
 	opts *BridgrOptions[T],
 ) {
-
 	if opts == nil {
 		opts = &BridgrOptions[T]{}
 	}
@@ -61,7 +65,7 @@ func RegisterCRUDRoutes[T any](
 		filters := r.URL.Query()
 		items, err := model.List(filters)
 		if err != nil {
-			if _, ok := err.(*errors.InvalidFilterFieldError); ok {
+			if _, ok := errors.AsType[*brerrors.InvalidFilterFieldError](err); ok {
 				brcontext.JSON(w, 400, map[string]string{"error": err.Error()})
 				return
 			}
@@ -145,6 +149,7 @@ func RegisterCRUDRoutes[T any](
 	}))
 }
 
+// RegisterCRUD is RegisterCRUDRoutes backed by a GORM model on db.
 func RegisterCRUD[T any](router *brhttp.Router, path string, db *gorm.DB, opts *BridgrOptions[T]) {
 	model := &brorm.GormModel[T]{DB: db}
 	RegisterCRUDRoutes(router, path, model, opts)

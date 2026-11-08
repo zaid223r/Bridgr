@@ -1,3 +1,4 @@
+// Command todoexample serves Todo and Note CRUD APIs backed by Postgres.
 package main
 
 import (

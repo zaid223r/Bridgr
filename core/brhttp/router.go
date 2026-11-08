@@ -1,3 +1,4 @@
+// Package brhttp contains the HTTP router and server bootstrap.
 package brhttp
 
 import (
@@ -6,20 +7,25 @@ import (
 	"strings"
 )
 
+// Route binds an HTTP method and path pattern to a handler.
 type Route struct {
 	Method  string
 	Path    string
 	Handler http.HandlerFunc
 }
 
+// Router matches requests against routes in registration order. Path segments
+// written as {name} capture a parameter, read it with Params.
 type Router struct {
 	routes []Route
 }
 
+// NewRouter returns an empty Router.
 func NewRouter() *Router {
 	return &Router{}
 }
 
+// AddRoute registers handler for method and path. It is not safe to call while serving.
 func (r *Router) AddRoute(method, path string, handler http.HandlerFunc) {
 	r.routes = append(r.routes, Route{
 		Method:  method,
@@ -42,6 +48,7 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 type paramsKeyType string
 
+// ParamsKey is the request-context key holding the matched path parameters.
 const ParamsKey paramsKeyType = "params"
 
 func matchRoute(pattern, path string) (bool, map[string]string) {

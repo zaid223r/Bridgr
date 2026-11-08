@@ -1,3 +1,4 @@
+// Package errors defines the error types Bridgr returns to clients.
 package errors
 
 import (
@@ -5,6 +6,7 @@ import (
 	"strings"
 )
 
+// InvalidFilterFieldError reports query parameters that are not filterable for a model.
 type InvalidFilterFieldError struct {
 	Fields []string
 }
