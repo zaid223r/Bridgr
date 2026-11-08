@@ -1,76 +1,36 @@
 // Package brhttp contains the HTTP router and server bootstrap.
 package brhttp
 
-import (
-	"context"
-	"net/http"
-	"strings"
-)
+import "net/http"
 
-// Route binds an HTTP method and path pattern to a handler.
-type Route struct {
-	Method  string
-	Path    string
-	Handler http.HandlerFunc
-}
-
-// Router matches requests against routes in registration order. Path segments
-// written as {name} capture a parameter, read it with Params.
+// Router dispatches requests using the standard library's http.ServeMux.
+//
+// Paths use ServeMux pattern syntax: {name} matches one path segment and is read
+// with r.PathValue("name"), {name...} matches the rest of the path. Matching is
+// exact, so "/todos" does not match "/todos/". A path that exists under another
+// method gets 405 Method Not Allowed with an Allow header; GET routes also answer
+// HEAD.
 type Router struct {
-	routes []Route
+	mux *http.ServeMux
 }
 
 // NewRouter returns an empty Router.
 func NewRouter() *Router {
-	return &Router{}
+	return &Router{mux: http.NewServeMux()}
 }
 
-// AddRoute registers handler for method and path. It is not safe to call while serving.
+// AddRoute registers handler for method and path. An empty method matches every
+// method. It panics if the pattern is invalid or conflicts with an existing route,
+// so mistakes surface at startup. It is not safe to call while serving.
 func (r *Router) AddRoute(method, path string, handler http.HandlerFunc) {
-	r.routes = append(r.routes, Route{
-		Method:  method,
-		Path:    path,
-		Handler: handler,
-	})
+	pattern := path
+	if method != "" {
+		pattern = method + " " + path
+	}
+	r.mux.HandleFunc(pattern, handler)
 }
 
+// ServeHTTP dispatches the request to the matching route, or replies 404 or 405.
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	for _, route := range r.routes {
-		if match, params := matchRoute(route.Path, req.URL.Path); match && req.Method == route.Method {
-			ctx := context.WithValue(req.Context(), ParamsKey, params)
-			req = req.WithContext(ctx)
-			route.Handler(w, req)
-			return
-		}
-	}
-	http.NotFound(w, req)
-}
-
-type paramsKeyType string
-
-// ParamsKey is the request-context key holding the matched path parameters.
-const ParamsKey paramsKeyType = "params"
-
-func matchRoute(pattern, path string) (bool, map[string]string) {
-	patternParts := strings.Split(pattern, "/")
-	pathParts := strings.Split(path, "/")
-	if len(patternParts) != len(pathParts) {
-		return false, nil
-	}
-	params := make(map[string]string)
-	for i := range patternParts {
-		if strings.HasPrefix(patternParts[i], "{") && strings.HasSuffix(patternParts[i], "}") {
-			key := patternParts[i][1 : len(patternParts[i])-1]
-			params[key] = pathParts[i]
-		} else if patternParts[i] != pathParts[i] {
-			return false, nil
-		}
-	}
-	return true, params
-}
-
-// Params returns the path parameters from the request context.
-func Params(r *http.Request) map[string]string {
-	params, _ := r.Context().Value(ParamsKey).(map[string]string)
-	return params
+	r.mux.ServeHTTP(w, req)
 }
