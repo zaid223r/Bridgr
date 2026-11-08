@@ -61,6 +61,16 @@ func (a *App) Router() *brhttp.Router {
 	return a.router
 }
 
+// AddMiddleware appends app-wide middleware, after any in Config.Middleware.
+// The first added is the outermost. Modules call it from Register. It panics
+// after the app has started.
+func (a *App) AddMiddleware(mw ...func(http.Handler) http.Handler) {
+	a.mustNotBeStarted("AddMiddleware")
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cfg.Middleware = append(a.cfg.Middleware, mw...)
+}
+
 // CRUD mounts list, create, get, replace, update and delete endpoints for T
 // under /path, backed by store, and documents them. It panics on an invalid
 // model or when the app has already started; see brcrud.RegisterCRUD.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -370,5 +371,141 @@ func TestDocsAssetRoute(t *testing.T) {
 				t.Errorf("page does not contain %q", tt.wantPage)
 			}
 		})
+	}
+}
+
+func TestRequestIDs(t *testing.T) {
+	t.Parallel()
+	router := NewRouter()
+	router.AddRoute("GET", "/id", func(w http.ResponseWriter, r *http.Request) {
+		brcontext.Logger(r.Context()).InfoContext(r.Context(), "handler log")
+		_, _ = w.Write([]byte(brcontext.RequestID(r.Context())))
+	})
+	logger, buf := jsonLogger()
+	h := NewServer(router, Config{Logger: logger, DisableDocs: true}).Handler()
+
+	get := func(header string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/id", nil)
+		if header != "" {
+			req.Header.Set(RequestIDHeader, header)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+
+	kept := get("abc-123_X.y")
+	if kept.Body.String() != "abc-123_X.y" || kept.Header().Get(RequestIDHeader) != "abc-123_X.y" {
+		t.Errorf("client ID not kept: body %q header %q", kept.Body.String(), kept.Header().Get(RequestIDHeader))
+	}
+	for _, bad := range []string{"", "has space", "<script>", strings.Repeat("a", 129)} {
+		rec := get(bad)
+		id := rec.Header().Get(RequestIDHeader)
+		if len(id) != 32 || id == bad || rec.Body.String() != id {
+			t.Errorf("client ID %q: got %q, want a fresh 32-char ID", bad, id)
+		}
+	}
+	if a, b := get("").Header().Get(RequestIDHeader), get("").Header().Get(RequestIDHeader); a == b {
+		t.Error("generated IDs repeat")
+	}
+
+	for _, l := range logLines(t, buf) {
+		if l["request_id"] == nil {
+			t.Errorf("log line without request_id: %v", l)
+		}
+	}
+}
+
+func TestPanicRecovery(t *testing.T) {
+	t.Parallel()
+	router := NewRouter()
+	router.AddRoute("GET", "/boom", func(http.ResponseWriter, *http.Request) { panic("nil map write") })
+	router.AddRoute("GET", "/late", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("partial"))
+		panic("after writing")
+	})
+	router.AddRoute("GET", "/abort", func(http.ResponseWriter, *http.Request) { panic(http.ErrAbortHandler) })
+	router.AddRoute("GET", "/ok", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
+	logger, buf := jsonLogger()
+	h := NewServer(router, Config{Logger: logger, DisableDocs: true}).Handler()
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/boom", nil)
+	req.Header.Set(RequestIDHeader, "trace-1")
+	h.ServeHTTP(rec, req)
+	var p brerrors.Problem
+	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+		t.Fatalf("panic response is not a problem: %q", rec.Body.String())
+	}
+	if rec.Code != 500 || p.Detail != "The server could not complete the request." || p.RequestID != "trace-1" || strings.Contains(rec.Body.String(), "nil map") {
+		t.Errorf("panic response = %d %+v", rec.Code, p)
+	}
+
+	late := httptest.NewRecorder()
+	h.ServeHTTP(late, httptest.NewRequest("GET", "/late", nil))
+	if late.Body.String() != "partial" {
+		t.Errorf("panic after writing must not append an error body: %q", late.Body.String())
+	}
+
+	func() {
+		defer func() {
+			if recover() != http.ErrAbortHandler { //nolint:errorlint // identity check, as net/http does
+				t.Error("http.ErrAbortHandler must propagate to net/http")
+			}
+		}()
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/abort", nil))
+	}()
+
+	after := httptest.NewRecorder()
+	h.ServeHTTP(after, httptest.NewRequest("GET", "/ok", nil))
+	if after.Body.String() != "ok" {
+		t.Error("server stopped serving after a panic")
+	}
+
+	var sawStack bool
+	for _, l := range logLines(t, buf) {
+		if l["msg"] == "panic serving request" && l["panic"] == "nil map write" && strings.Contains(fmt.Sprint(l["stack"]), "server_test.go") && l["request_id"] == "trace-1" {
+			sawStack = true
+		}
+	}
+	if !sawStack {
+		t.Error("panic not logged with its value, stack and request ID")
+	}
+}
+
+func TestGlobalMiddleware(t *testing.T) {
+	t.Parallel()
+	var order []string
+	mw := func(name string) func(http.Handler) http.Handler {
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				order = append(order, name+":"+brcontext.RequestID(r.Context()))
+				next.ServeHTTP(w, r)
+			})
+		}
+	}
+	panicky := func(http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/mw-panic" {
+				panic("middleware bug")
+			}
+		})
+	}
+	router := NewRouter()
+	router.AddRoute("GET", "/x", func(http.ResponseWriter, *http.Request) { order = append(order, "handler") })
+	logger, _ := jsonLogger()
+	h := NewServer(router, Config{Logger: logger, DisableDocs: true, Middleware: []func(http.Handler) http.Handler{mw("outer"), mw("inner")}}).Handler()
+	req := httptest.NewRequest("GET", "/x", nil)
+	req.Header.Set(RequestIDHeader, "r1")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	if got := fmt.Sprint(order); got != "[outer:r1 inner:r1 handler]" {
+		t.Errorf("order = %s, want outer, inner, handler, all seeing the request ID", got)
+	}
+
+	recovered := NewServer(NewRouter(), Config{Logger: logger, DisableDocs: true, Middleware: []func(http.Handler) http.Handler{panicky}}).Handler()
+	rec := httptest.NewRecorder()
+	recovered.ServeHTTP(rec, httptest.NewRequest("GET", "/mw-panic", nil))
+	if rec.Code != 500 {
+		t.Errorf("panic in middleware: status %d, want 500", rec.Code)
 	}
 }

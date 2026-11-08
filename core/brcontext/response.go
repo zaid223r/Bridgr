@@ -1,5 +1,5 @@
 // Package brcontext holds request-scoped helpers: writing JSON responses and
-// carrying the server's logger in the request context.
+// carrying the server's logger and the request ID in the request context.
 package brcontext
 
 import (
@@ -17,7 +17,21 @@ func JSON(w http.ResponseWriter, status int, data any) {
 	_ = json.NewEncoder(w).Encode(data)
 }
 
-type loggerKey struct{}
+type (
+	loggerKey    struct{}
+	requestIDKey struct{}
+)
+
+// WithRequestID returns a copy of ctx carrying the request ID.
+func WithRequestID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, requestIDKey{}, id)
+}
+
+// RequestID returns the ID the server assigned to the request, or "".
+func RequestID(ctx context.Context) string {
+	id, _ := ctx.Value(requestIDKey{}).(string)
+	return id
+}
 
 // WithLogger returns a copy of ctx that carries logger.
 func WithLogger(ctx context.Context, logger *slog.Logger) context.Context {

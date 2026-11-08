@@ -39,6 +39,9 @@ type Problem struct {
 	InvalidFields []string `json:"invalid_fields,omitempty"`
 	// Errors is an extension member listing field-level validation problems.
 	Errors []FieldError `json:"errors,omitempty"`
+	// RequestID is an extension member with the server's ID for the request, so
+	// a client can quote it when reporting a problem.
+	RequestID string `json:"request_id,omitempty"`
 }
 
 // New returns a Problem for status with the standard status text as its title.
@@ -67,7 +70,7 @@ func Write(w http.ResponseWriter, p Problem) {
 //   - anything else → 500 with a generic detail, so internal messages
 //     (SQL, driver errors) never reach clients
 //
-// Instance is set to the request path.
+// Instance is set to the request path and RequestID to the request's ID.
 func FromError(r *http.Request, err error) Problem {
 	var p Problem
 	if fieldErr, ok := errors.AsType[*InvalidFilterFieldError](err); ok {
@@ -100,6 +103,7 @@ func FromError(r *http.Request, err error) Problem {
 		}
 	}
 	p.Instance = r.URL.Path
+	p.RequestID = brcontext.RequestID(r.Context())
 	return p
 }
 

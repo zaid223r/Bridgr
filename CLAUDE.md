@@ -141,6 +141,7 @@ make test         # unit tests
 make integration  # integration tests; starts databases from compose.yaml (needs Docker/OrbStack)
 make bench        # benchmarks
 make cover        # coverage report
+make example-ts   # regenerate the TypeScript example's types; run after any change to the OpenAPI output
 ```
 
 Go: support the two latest Go releases (currently 1.26 and 1.27), matching Go's own support
