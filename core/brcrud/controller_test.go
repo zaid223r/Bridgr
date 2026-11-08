@@ -1,6 +1,7 @@
 package brcrud_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,6 +34,7 @@ type memModel struct {
 	nextID      int
 	lastFilters map[string][]string
 	lastID      string
+	lastCtx     context.Context
 	// fail, when set, is returned by every method to simulate a storage failure.
 	fail error
 }
@@ -46,9 +48,10 @@ func newMemModel(seed ...item) *memModel {
 	return m
 }
 
-func (m *memModel) List(filters map[string][]string) ([]item, error) {
+func (m *memModel) List(ctx context.Context, filters map[string][]string) ([]item, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.lastCtx = ctx
 	if m.fail != nil {
 		return nil, m.fail
 	}
@@ -66,9 +69,10 @@ func (m *memModel) List(filters map[string][]string) ([]item, error) {
 	return out, nil
 }
 
-func (m *memModel) Get(id string) (item, error) {
+func (m *memModel) Get(ctx context.Context, id string) (item, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.lastCtx = ctx
 	if m.fail != nil {
 		return item{}, m.fail
 	}
@@ -80,9 +84,10 @@ func (m *memModel) Get(id string) (item, error) {
 	return it, nil
 }
 
-func (m *memModel) Create(input item) (item, error) {
+func (m *memModel) Create(ctx context.Context, input item) (item, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.lastCtx = ctx
 	if m.fail != nil {
 		return item{}, m.fail
 	}
@@ -92,9 +97,10 @@ func (m *memModel) Create(input item) (item, error) {
 	return input, nil
 }
 
-func (m *memModel) Update(id string, input item) (item, error) {
+func (m *memModel) Update(ctx context.Context, id string, input item) (item, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.lastCtx = ctx
 	if m.fail != nil {
 		return item{}, m.fail
 	}
@@ -107,9 +113,10 @@ func (m *memModel) Update(id string, input item) (item, error) {
 	return input, nil
 }
 
-func (m *memModel) Delete(id string) error {
+func (m *memModel) Delete(ctx context.Context, id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.lastCtx = ctx
 	m.lastID = id
 	if m.fail != nil {
 		return m.fail
@@ -399,5 +406,42 @@ func TestCRUDErrors(t *testing.T) {
 				t.Errorf("instance = %q, want %q", p.Instance, wantInstance)
 			}
 		})
+	}
+}
+
+type ctxKey struct{}
+
+func TestRequestContextReachesModel(t *testing.T) {
+	t.Parallel()
+	tag := func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			next(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, "req-42")))
+		}
+	}
+	for _, rt := range []struct{ method, path, body string }{
+		{"GET", "/items", ""}, {"POST", "/items", `{}`}, {"GET", "/items/1", ""}, {"PUT", "/items/1", `{}`}, {"DELETE", "/items/1", ""},
+	} {
+		model := newMemModel(item{ID: 1})
+		opts := &brcrud.BridgrOptions[item]{Middlewares: []func(http.HandlerFunc) http.HandlerFunc{tag}}
+		serve(t, newServer(t, model, opts), rt.method, rt.path, rt.body)
+		if model.lastCtx == nil || model.lastCtx.Value(ctxKey{}) != "req-42" {
+			t.Errorf("%s %s: model did not receive the request context", rt.method, rt.path)
+		}
+	}
+}
+
+func TestBodyTooLarge(t *testing.T) {
+	t.Parallel()
+	router := newServer(t, newMemModel(item{ID: 1}), nil)
+	limited := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, 16)
+		router.ServeHTTP(w, r)
+	})
+	big := `{"title":"` + strings.Repeat("x", 64) + `"}`
+	for _, rt := range []struct{ method, path string }{{"POST", "/items"}, {"PUT", "/items/1"}} {
+		p := decodeProblem(t, serve(t, limited, rt.method, rt.path, big), http.StatusRequestEntityTooLarge)
+		if p.Detail != "request body is larger than 16 bytes" {
+			t.Errorf("%s: detail = %q", rt.method, p.Detail)
+		}
 	}
 }

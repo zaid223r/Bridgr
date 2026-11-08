@@ -23,6 +23,9 @@ Turn Go structs into documented REST APIs with one line per resource.
   (`application/problem+json`): 400 bad input, 401/403 from your `Auth` func, 404 missing
   records, 422 failed validation. Internal errors return a generic 500 and are logged, so
   database messages never leak to clients.
+- **Production server**: `brhttp.NewServer` sets read/write/idle timeouts, caps request
+  bodies (1 MiB by default, 413 above), logs every request with `log/slog`, passes the
+  request context down to the database, and shuts down gracefully on SIGINT/SIGTERM.
 - **Storage**: PostgreSQL through GORM (being replaced by a faster `database/sql` layer).
 
 ## Quick start
@@ -31,6 +34,8 @@ Turn Go structs into documented REST APIs with one line per resource.
 package main
 
 import (
+	"log"
+
 	"github.com/zaid223r/Bridgr/core/brcrud"
 	"github.com/zaid223r/Bridgr/core/brdb"
 	"github.com/zaid223r/Bridgr/core/brhttp"
@@ -56,7 +61,10 @@ func main() {
 
 	router := brhttp.NewRouter()
 	brcrud.RegisterCRUD[Todo](router, "todos", db, nil)
-	brhttp.StartServer(router, "8080")
+	server := brhttp.NewServer(router, brhttp.Config{Addr: ":8080"})
+	if err := server.ListenAndServe(); err != nil { // stops gracefully on Ctrl+C / SIGTERM
+		log.Fatal(err)
+	}
 }
 ```
 

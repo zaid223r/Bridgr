@@ -49,7 +49,7 @@ func TestListFiltersUseColumns(t *testing.T) {
 	db, last := dryRunDB(t)
 	m := &GormModel[listTodo]{DB: db}
 
-	_, err := m.List(map[string][]string{
+	_, err := m.List(t.Context(), map[string][]string{
 		"title":    {"milk"},
 		"ownerId":  {"3"},
 		"archived": {"false"},
@@ -71,7 +71,7 @@ func TestListRejectsUnknownFilters(t *testing.T) {
 	db, _ := dryRunDB(t)
 	m := &GormModel[listTodo]{DB: db}
 
-	_, err := m.List(map[string][]string{"body": {"x"}, "title": {"y"}, "id; DROP TABLE x": {"1"}})
+	_, err := m.List(t.Context(), map[string][]string{"body": {"x"}, "title": {"y"}, "id; DROP TABLE x": {"1"}})
 	fieldErr, ok := errors.AsType[*brerrors.InvalidFilterFieldError](err)
 	if !ok {
 		t.Fatalf("err = %v, want InvalidFilterFieldError", err)
@@ -91,9 +91,9 @@ func TestLookupsUsePrimaryKeyColumn(t *testing.T) {
 	m := &GormModel[sku]{DB: db}
 
 	ops := map[string]func(){
-		"get":    func() { _, _ = m.Get("A1") },
-		"update": func() { _, _ = m.Update("A1", sku{Title: "x"}) },
-		"delete": func() { _ = m.Delete("A1") },
+		"get":    func() { _, _ = m.Get(t.Context(), "A1") },
+		"update": func() { _, _ = m.Update(t.Context(), "A1", sku{Title: "x"}) },
+		"delete": func() { _ = m.Delete(t.Context(), "A1") },
 	}
 	for name, op := range ops {
 		*last = ""
@@ -113,7 +113,7 @@ func TestLookupsWithoutPrimaryKeyFail(t *testing.T) {
 		Name string `json:"name"`
 	}
 	m := &GormModel[noPK]{DB: db}
-	if _, err := m.Get("1"); err == nil || !strings.Contains(err.Error(), "no primary key") {
+	if _, err := m.Get(t.Context(), "1"); err == nil || !strings.Contains(err.Error(), "no primary key") {
 		t.Errorf("Get err = %v, want a missing primary key error", err)
 	}
 }

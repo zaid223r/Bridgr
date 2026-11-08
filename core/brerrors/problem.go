@@ -5,8 +5,9 @@ package brerrors
 import (
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
+
+	"github.com/zaid223r/Bridgr/core/brcontext"
 )
 
 // ContentType is the media type of problem detail responses.
@@ -82,11 +83,12 @@ func FromError(r *http.Request, err error) Problem {
 }
 
 // WriteError writes the Problem for err (see FromError). 5xx errors are logged with
-// the original error, since the client only sees a generic message.
+// the original error, since the client only sees a generic message, using the
+// logger in the request context (brcontext.Logger).
 func WriteError(w http.ResponseWriter, r *http.Request, err error) {
 	p := FromError(r, err)
 	if p.Status >= http.StatusInternalServerError {
-		slog.ErrorContext(r.Context(), "request failed",
+		brcontext.Logger(r.Context()).ErrorContext(r.Context(), "request failed",
 			"method", r.Method, "path", r.URL.Path, "status", p.Status, "error", err)
 	}
 	Write(w, p)

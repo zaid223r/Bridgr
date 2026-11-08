@@ -1,6 +1,7 @@
 package brcrud_test
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -13,11 +14,18 @@ import (
 // call it.
 type noopModel[T any] struct{}
 
-func (noopModel[T]) List(map[string][]string) ([]T, error) { return nil, nil }
-func (noopModel[T]) Get(string) (T, error)                 { var z T; return z, nil }
-func (noopModel[T]) Create(in T) (T, error)                { return in, nil }
-func (noopModel[T]) Update(_ string, in T) (T, error)      { return in, nil }
-func (noopModel[T]) Delete(string) error                   { return nil }
+func (noopModel[T]) List(context.Context, map[string][]string) ([]T, error) { return nil, nil }
+
+func (noopModel[T]) Get(context.Context, string) (T, error) {
+	var zero T
+	return zero, nil
+}
+
+func (noopModel[T]) Create(_ context.Context, in T) (T, error) { return in, nil }
+
+func (noopModel[T]) Update(_ context.Context, _ string, in T) (T, error) { return in, nil }
+
+func (noopModel[T]) Delete(context.Context, string) error { return nil }
 
 type typoFilter struct {
 	ID    int    `json:"id"`
