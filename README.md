@@ -165,6 +165,29 @@ The same example is runnable: `go run ./examples/quickstart`.
 React + Vite app on a client generated from the OpenAPI document with `openapi-typescript`.
 Change the Go struct, run `bun run gen`, and the frontend won't compile until it matches.
 
+## Custom endpoints
+
+Anything that isn't CRUD is a typed handler. Inputs come from tags, outputs are JSON,
+and both end up in the OpenAPI document (and so in generated clients):
+
+```go
+type ArchiveIn struct {
+	ID     int64  `path:"id" json:"-"`
+	Notify bool   `query:"notify" json:"-"`
+	Reason string `json:"reason"` // untagged fields are the JSON body
+}
+
+bridgr.Handle(app, "POST", "/todos/{id}/archive",
+	func(ctx context.Context, in ArchiveIn) (Todo, error) {
+		return archive(ctx, in.ID, in.Reason) // errors map like CRUD ones: ErrNotFound → 404, …
+	},
+	bridgr.WithOperationID("archiveTodo"), bridgr.WithErrors(http.StatusNotFound))
+```
+
+Bad parameters get a 400 naming the field; an input with a `Validate() error` method gets
+422s; returning `bridgr.NoContent` responds 204. A `{wildcard}` without a matching
+`path` field (or the reverse) stops the program at startup.
+
 ## Writing a module
 
 A module is any type with `Name()` and `Register(*bridgr.App) error`. It can add routes

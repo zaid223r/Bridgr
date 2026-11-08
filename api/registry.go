@@ -40,6 +40,7 @@ type resource struct {
 type Registry struct {
 	mu         sync.Mutex
 	resources  []resource
+	operations []Operation
 	transforms []func(doc map[string]any) error
 }
 
@@ -70,6 +71,7 @@ func (r *Registry) AddCRUD(path string, model *brschema.Model, docs CRUDDocs) {
 func (r *Registry) Build(info Info) ([]byte, error) {
 	r.mu.Lock()
 	resources := append([]resource(nil), r.resources...)
+	operations := append([]Operation(nil), r.operations...)
 	transforms := append([]func(map[string]any) error(nil), r.transforms...)
 	r.mu.Unlock()
 
@@ -82,6 +84,7 @@ func (r *Registry) Build(info Info) ([]byte, error) {
 		}
 		tags = append(tags, map[string]any{"name": res.path})
 	}
+	g.addCustom(paths, operations)
 
 	if info.Title == "" {
 		info.Title = "Bridgr API"
