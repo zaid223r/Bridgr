@@ -77,13 +77,12 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 
 	base := "/" + path
 
-	var zero T
-	api.RegisterPath("get", base, zero)
-	api.RegisterPath("post", base, zero)
-	api.RegisterPath("get", base+"/{id}", zero)
-	api.RegisterPath("put", base+"/{id}", zero)
-	api.RegisterPath("patch", base+"/{id}", zero)
-	api.RegisterPath("delete", base+"/{id}", zero)
+	router.Docs().AddCRUD(path, model, api.CRUDDocs{
+		Auth:         opts.Auth != nil,
+		Validate:     opts.Validate != nil,
+		DefaultLimit: limits.def,
+		MaxLimit:     limits.max,
+	})
 
 	handle := func(method, pattern string, handler http.HandlerFunc) {
 		h := withAuth(opts.Auth, handler)

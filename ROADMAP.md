@@ -76,8 +76,8 @@ operators and pagination are built once, on the Store path only, instead of also
 
 ## Phase 3: OpenAPI that generates real clients
 
-- [ ] **`feat/openapi-schemas`**: OpenAPI 3.1 with `components`, request + response schemas, error schemas
-  - [ ] deterministic output, golden-file tests
+- [x] **`feat/openapi-schemas`**: OpenAPI 3.1 with `components`, request + response schemas, error schemas
+  - [x] deterministic output, golden-file tests
 - [ ] **`test/openapi-validation`**: validate the generated spec with `kin-openapi` in tests
 - [ ] **`feat/docs-ui`**: replace Swagger UI with [Scalar](https://github.com/scalar/scalar) at `/docs`
   - [ ] `@scalar/api-reference` standalone bundle, version-pinned and embedded with `go:embed` (no CDN at runtime)

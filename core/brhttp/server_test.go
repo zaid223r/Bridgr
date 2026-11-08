@@ -320,3 +320,21 @@ func TestDocsRoutes(t *testing.T) {
 		})
 	}
 }
+
+func TestSpecUsesConfigInfo(t *testing.T) {
+	t.Parallel()
+	logger, _ := jsonLogger()
+	h := NewServer(NewRouter(), Config{Logger: logger, Title: "Shop API", Version: "3.2.1", Description: "Things to buy"}).Handler()
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/openapi.json", nil))
+	var doc struct {
+		OpenAPI string            `json:"openapi"`
+		Info    map[string]string `json:"info"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc.OpenAPI != "3.1.0" || doc.Info["title"] != "Shop API" || doc.Info["version"] != "3.2.1" || doc.Info["description"] != "Things to buy" {
+		t.Errorf("spec header = %s %v", doc.OpenAPI, doc.Info)
+	}
+}

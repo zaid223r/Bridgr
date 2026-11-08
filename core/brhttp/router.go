@@ -1,7 +1,11 @@
 // Package brhttp contains the HTTP router and server bootstrap.
 package brhttp
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/zaid223r/Bridgr/api"
+)
 
 // Router dispatches requests using the standard library's http.ServeMux.
 //
@@ -11,12 +15,19 @@ import "net/http"
 // method gets 405 Method Not Allowed with an Allow header; GET routes also answer
 // HEAD.
 type Router struct {
-	mux *http.ServeMux
+	mux  *http.ServeMux
+	docs *api.Registry
 }
 
 // NewRouter returns an empty Router.
 func NewRouter() *Router {
-	return &Router{mux: http.NewServeMux()}
+	return &Router{mux: http.NewServeMux(), docs: api.NewRegistry()}
+}
+
+// Docs returns the registry of resources documented in this router's OpenAPI
+// document.
+func (r *Router) Docs() *api.Registry {
+	return r.docs
 }
 
 // AddRoute registers handler for method and path. An empty method matches every

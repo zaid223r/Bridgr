@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -38,6 +39,11 @@ type Config struct {
 	Logger *slog.Logger
 	// DisableDocs skips registering GET /openapi.json and GET /docs.
 	DisableDocs bool
+	// Title, Version and Description fill the OpenAPI info object. Defaults
+	// "Bridgr API" and "1.0.0".
+	Title       string
+	Version     string
+	Description string
 }
 
 func (c Config) withDefaults() Config {
@@ -71,11 +77,14 @@ type Server struct {
 
 // NewServer wraps router in a Server. Unless cfg.DisableDocs is set it registers
 // GET /openapi.json and GET /docs on router, so call it once per router, after
-// registering resources.
+// registering resources: the document is built on the first request and cached.
 func NewServer(router *Router, cfg Config) *Server {
 	cfg = cfg.withDefaults()
 	if !cfg.DisableDocs {
-		router.AddRoute("GET", "/openapi.json", serveSpec)
+		info := api.Info{Title: cfg.Title, Version: cfg.Version, Description: cfg.Description}
+		router.AddRoute("GET", "/openapi.json", serveSpec(sync.OnceValues(func() ([]byte, error) {
+			return router.Docs().Build(info)
+		})))
 		router.AddRoute("GET", "/docs", api.ServeSwaggerUI())
 	}
 	handler := withRequestContext(cfg.Logger, cfg.MaxBodyBytes, router)
@@ -144,15 +153,17 @@ func (s *Server) Serve(ctx context.Context, ln net.Listener) error {
 	return nil
 }
 
-func serveSpec(w http.ResponseWriter, r *http.Request) {
-	spec, err := api.BuildSpec()
-	if err != nil {
-		brcontext.Logger(r.Context()).ErrorContext(r.Context(), "building OpenAPI spec", "error", err)
-		http.Error(w, "could not build the OpenAPI document", http.StatusInternalServerError)
-		return
+func serveSpec(build func() ([]byte, error)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		spec, err := build()
+		if err != nil {
+			brcontext.Logger(r.Context()).ErrorContext(r.Context(), "building OpenAPI spec", "error", err)
+			http.Error(w, "could not build the OpenAPI document", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(spec)
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_, _ = w.Write(spec)
 }
 
 // withRequestContext puts logger in the request context, limits the body to
