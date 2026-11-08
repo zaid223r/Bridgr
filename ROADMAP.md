@@ -50,23 +50,28 @@ park or delete a branch is defined in [CLAUDE.md § Branch lifecycle](CLAUDE.md#
 - [x] **`feat/sqlstore-sqlite`**: `database/sql` adapter, SQLite dialect
   - [x] precomputed SQL per model, placeholders per dialect
   - [x] passes the contract suite
+Reordered: Postgres and the GORM removal come first, so the PUT/PATCH fix, filter
+operators and pagination are built once, on the Store path only, instead of also for GORM.
+
+- [x] **`feat/sqlstore-postgres`**: Postgres dialect (any `database/sql` driver, tested with `pgx/v5/stdlib`)
+  - [x] `$1` placeholders, `RETURNING`, `ILIKE`, identity keys kept in sync after explicit ids
+  - [x] integration tests (`compose.yaml` locally, service container in CI)
+- [ ] **`chore/remove-gorm`**: drop GORM completely
+  - [ ] CRUD routes take a `brstore.Store`; remove `BridgrModel`, `brorm`, `brdb`
+  - [ ] `db:"column,pk"` struct tags (gorm tags still read for migration)
+  - [ ] migrate example and README
+  - [ ] before/after benchmark numbers
 - [ ] **`fix/put-patch-semantics`**: `PUT` replaces, `PATCH` merges
   - [ ] fixes the bug where `{"done": false}` is silently ignored
   - [ ] tests for zero values
 - [ ] **`feat/filter-operators`**: richer, safe filtering
-  - [ ] `eq, ne, gt, gte, lt, lte, like, ilike, in` (`?age[gte]=18`)
+  - [ ] `eq, ne, gt, gte, lt, lte, contains, in` (`?age[gte]=18`)
   - [ ] escape `LIKE` wildcards, columns only from the whitelist
   - [ ] tests incl. injection attempts
 - [ ] **`feat/pagination-sorting`**
   - [ ] `limit`/`offset` with default + max, `sort=-created_at,title`
   - [ ] total count, `Link` header
   - [ ] tests
-- [ ] **`feat/sqlstore-postgres`**: Postgres via `pgx/v5/stdlib`
-  - [ ] `$1` placeholders, `RETURNING`, `ILIKE`
-  - [ ] integration tests (testcontainers + CI service container)
-- [ ] **`chore/remove-gorm`**: drop GORM completely
-  - [ ] migrate example and README
-  - [ ] before/after benchmark numbers
 - [ ] **`feat/sqlstore-mysql`**: MySQL dialect + integration tests
 
 ## Phase 3: OpenAPI that generates real clients

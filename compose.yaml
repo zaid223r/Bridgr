@@ -1,0 +1,18 @@
+# Throwaway databases for `make integration`. Data lives in tmpfs and disappears
+# when the containers stop; the credentials are for these test containers only.
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: bridgr
+      POSTGRES_PASSWORD: bridgr
+      POSTGRES_DB: bridgr
+    ports:
+      - "55432:5432"
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "bridgr"]
+      interval: 2s
+      timeout: 5s
+      retries: 30

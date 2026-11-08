@@ -9,8 +9,9 @@ import (
 	"github.com/zaid223r/Bridgr/core/brschema"
 )
 
-// Dialect is the SQL that differs between databases. Bridgr ships SQLite; the
-// methods are exported so other databases can be added without forking.
+// Dialect is the SQL that differs between databases. Bridgr ships SQLite and
+// Postgres; the methods are exported so other databases can be added without
+// forking.
 type Dialect interface {
 	// Placeholder returns the n-th (1-based) bind parameter: "?" or "$n".
 	Placeholder(n int) string
@@ -27,6 +28,13 @@ type Dialect interface {
 	AutoIncrementPK(column string) string
 	// IsUniqueViolation reports whether err is a duplicate key error.
 	IsUniqueViolation(err error) bool
+	// NoLimit returns the LIMIT clause meaning "no limit", for databases that
+	// require a LIMIT before OFFSET, or "" when OFFSET may stand alone.
+	NoLimit() string
+	// SyncSequence returns a statement, with its arguments, that moves the key
+	// generator past explicitly inserted integer keys, or "" when the database
+	// does that by itself.
+	SyncSequence(table, column string) (string, []any)
 }
 
 // SQLite is the dialect for SQLite through modernc.org/sqlite (pure Go, no cgo).
@@ -76,6 +84,10 @@ func (sqliteDialect) ColumnType(f *brschema.Field) string {
 		return "INTEGER" + notNull
 	}
 }
+
+func (sqliteDialect) NoLimit() string { return "LIMIT -1" }
+
+func (sqliteDialect) SyncSequence(string, string) (string, []any) { return "", nil }
 
 func (d sqliteDialect) AutoIncrementPK(column string) string {
 	return d.Quote(column) + " INTEGER PRIMARY KEY AUTOINCREMENT"

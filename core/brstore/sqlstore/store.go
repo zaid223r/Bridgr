@@ -1,6 +1,6 @@
 // Package sqlstore is a brstore.Store on database/sql. SQL for each model is
 // built once when the store is created; per-request work is binding arguments
-// and scanning rows. Pick the database with a Dialect (SQLite today).
+// and scanning rows. Pick the database with a Dialect: SQLite or Postgres.
 package sqlstore
 
 import (
@@ -205,6 +205,9 @@ func (s *Store[T]) Create(ctx context.Context, value T) (T, error) {
 			Scan(pk.Addr().Interface())
 	} else {
 		_, err = s.db.ExecContext(ctx, s.insertSQL, s.args(rv, s.insertFields)...)
+		if err == nil && s.autoPK {
+			err = s.syncSequence(ctx)
+		}
 	}
 	if err != nil {
 		if s.dialect.IsUniqueViolation(err) {
@@ -247,6 +250,18 @@ func (s *Store[T]) Delete(ctx context.Context, id string) error {
 		return fmt.Errorf("deleting %s %s: %w", s.model.Name, id, err)
 	}
 	return s.requireRow(res, id)
+}
+
+// syncSequence keeps generated keys above explicitly inserted ones.
+func (s *Store[T]) syncSequence(ctx context.Context) error {
+	query, args := s.dialect.SyncSequence(s.table, s.pk.Column)
+	if query == "" {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
+		return fmt.Errorf("syncing %s key sequence: %w", s.table, err)
+	}
+	return nil
 }
 
 func (s *Store[T]) requireRow(res sql.Result, id string) error {
@@ -307,8 +322,9 @@ func (s *Store[T]) listSQL(q brstore.Query) (string, []any, error) {
 	if q.Limit > 0 {
 		b.WriteString(" LIMIT " + ph(int64(q.Limit)))
 	} else if q.Offset > 0 {
-		// SQL needs a LIMIT before OFFSET; -1 means "no limit" in SQLite.
-		b.WriteString(" LIMIT -1")
+		if noLimit := s.dialect.NoLimit(); noLimit != "" {
+			b.WriteString(" " + noLimit)
+		}
 	}
 	if q.Offset > 0 {
 		b.WriteString(" OFFSET " + ph(int64(q.Offset)))
