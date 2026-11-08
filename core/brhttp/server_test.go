@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zaid223r/Bridgr/api"
 	"github.com/zaid223r/Bridgr/core/brcontext"
 	"github.com/zaid223r/Bridgr/core/brerrors"
 )
@@ -336,5 +337,38 @@ func TestSpecUsesConfigInfo(t *testing.T) {
 	}
 	if doc.OpenAPI != "3.1.0" || doc.Info["title"] != "Shop API" || doc.Info["version"] != "3.2.1" || doc.Info["description"] != "Things to buy" {
 		t.Errorf("spec header = %s %v", doc.OpenAPI, doc.Info)
+	}
+}
+
+func TestDocsAssetRoute(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		cfg       Config
+		wantAsset int
+		wantPage  string
+	}{
+		{"embedded by default", Config{Title: "Shop"}, http.StatusOK, "<title>Shop</title>"},
+		{"CDN mode skips the embedded asset", Config{Docs: api.DocsOptions{CDN: true}}, http.StatusNotFound, "cdn.jsdelivr.net"},
+		{"docs title overrides the API title", Config{Title: "Shop", Docs: api.DocsOptions{Title: "Shop docs"}}, http.StatusOK, "<title>Shop docs</title>"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			logger, _ := jsonLogger()
+			tt.cfg.Logger = logger
+			h := NewServer(NewRouter(), tt.cfg).Handler()
+
+			asset := httptest.NewRecorder()
+			h.ServeHTTP(asset, httptest.NewRequest("GET", api.ScalarAssetPath, nil))
+			if asset.Code != tt.wantAsset {
+				t.Errorf("asset status = %d, want %d", asset.Code, tt.wantAsset)
+			}
+			page := httptest.NewRecorder()
+			h.ServeHTTP(page, httptest.NewRequest("GET", "/docs", nil))
+			if !strings.Contains(page.Body.String(), tt.wantPage) {
+				t.Errorf("page does not contain %q", tt.wantPage)
+			}
+		})
 	}
 }
