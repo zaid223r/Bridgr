@@ -9,7 +9,9 @@ Turn Go structs into documented REST APIs with one line per resource.
 
 ## What works today
 
-- **Generic CRUD**: `GET/POST /todos`, `GET/PUT/DELETE /todos/{id}` from a single call.
+- **Generic CRUD**: `GET/POST /todos`, `GET/PUT/PATCH/DELETE /todos/{id}` from a single
+  call. `PUT` replaces the record (missing fields become zero); `PATCH` changes only the
+  fields in the body, so `{"done": false}` sets `done` and leaves the rest alone.
 - **Filtering** that models opt into:
   - `FilterableFields()` lists the fields that can be filtered.
   - `GenericFiltering()` makes every field filterable.

@@ -50,6 +50,7 @@ func TestBuildSpecUsesSchema(t *testing.T) {
 	RegisterPath("get", "/spec-todos", specTodo{})
 	RegisterPath("post", "/spec-todos", specTodo{})
 	RegisterPath("put", "/spec-todos/{id}", specTodo{})
+	RegisterPath("patch", "/spec-todos/{id}", specTodo{})
 
 	raw, err := BuildSpec()
 	if err != nil {
@@ -91,9 +92,11 @@ func TestBuildSpecUsesSchema(t *testing.T) {
 	if _, ok := post["id"]; ok {
 		t.Error("POST body should not contain the primary key")
 	}
-	put := doc.Paths["/spec-todos/{id}"]["put"].RequestBody.Content["application/json"].Schema.Properties
-	if put["id"]["readOnly"] != true || put["id"]["type"] != "integer" {
-		t.Errorf("PUT id = %v, want readOnly integer", put["id"])
+	for _, method := range []string{"put", "patch"} {
+		body := doc.Paths["/spec-todos/{id}"][method].RequestBody.Content["application/json"].Schema.Properties
+		if body["id"]["readOnly"] != true || body["id"]["type"] != "integer" || body["title"] == nil {
+			t.Errorf("%s body = %v, want all fields with a readOnly integer id", method, body)
+		}
 	}
 }
 

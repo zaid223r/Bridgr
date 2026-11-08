@@ -224,8 +224,8 @@ func TestCRUDRoutes(t *testing.T) {
 
 	t.Run("unsupported method", func(t *testing.T) {
 		t.Parallel()
-		rec := serve(t, newServer(t, newFakeStore(t), nil), "PATCH", "/items/1", `{}`)
-		if rec.Code != http.StatusMethodNotAllowed || rec.Header().Get("Allow") != "DELETE, GET, HEAD, PUT" {
+		rec := serve(t, newServer(t, newFakeStore(t), nil), "POST", "/items/1", `{}`)
+		if rec.Code != http.StatusMethodNotAllowed || rec.Header().Get("Allow") != "DELETE, GET, HEAD, PATCH, PUT" {
 			t.Fatalf("status = %d, Allow = %q", rec.Code, rec.Header().Get("Allow"))
 		}
 	})
@@ -306,12 +306,22 @@ func TestCRUDErrors(t *testing.T) {
 		{name: "id of the wrong type", method: "GET", path: "/items/abc", wantStatus: 404},
 		{name: "update missing", method: "PUT", path: "/items/99", body: `{"title":"x"}`, wantStatus: 404},
 		{name: "delete missing", method: "DELETE", path: "/items/99", wantStatus: 404},
+		{name: "patch missing", method: "PATCH", path: "/items/99", body: `{"title":"x"}`, wantStatus: 404},
+		{name: "patch with malformed JSON", method: "PATCH", path: "/items/1", body: `{"qty":`, wantStatus: 400},
+		{
+			name: "patch with an array", method: "PATCH", path: "/items/1", body: `[{"qty":1}]`, wantStatus: 400,
+			wantDetail: "invalid JSON body: body must be a JSON object",
+		},
+		{
+			name: "patch with null", method: "PATCH", path: "/items/1", body: `null`, wantStatus: 400,
+			wantDetail: "invalid JSON body: body must be a JSON object",
+		},
+		{name: "patch with a wrong type", method: "PATCH", path: "/items/1", body: `{"qty":"many"}`, wantStatus: 400},
+		{name: "put with null", method: "PUT", path: "/items/1", body: `null`, wantStatus: 400},
 		{name: "duplicate id", method: "POST", path: "/items", body: `{"id":1,"title":"dup"}`, wantStatus: 409},
 	}
 	failure := errors.New(`pq: relation "items" does not exist`)
-	for _, rt := range []struct{ method, path, body string }{
-		{"GET", "/items", ""}, {"POST", "/items", `{}`}, {"GET", "/items/1", ""}, {"PUT", "/items/1", `{}`}, {"DELETE", "/items/1", ""},
-	} {
+	for _, rt := range allRoutes {
 		tests = append(tests, errorCase{
 			name: "storage failure " + rt.method + " " + rt.path, method: rt.method, path: rt.path, body: rt.body,
 			fail: failure, wantStatus: 500, wantDetail: "The server could not complete the request.",
@@ -343,6 +353,7 @@ var allRoutes = []struct{ method, path, body string }{
 	{"POST", "/items", `{"title":"b"}`},
 	{"GET", "/items/1", ""},
 	{"PUT", "/items/1", `{"title":"b"}`},
+	{"PATCH", "/items/1", `{"title":"b"}`},
 	{"DELETE", "/items/1", ""},
 }
 
@@ -391,8 +402,10 @@ func TestOptions(t *testing.T) {
 			return nil
 		}}
 		router := newServer(t, newFakeStore(t, seedItems...), opts)
-		for _, rt := range []struct{ method, path string }{{"POST", "/items"}, {"PUT", "/items/1"}} {
-			p := decodeProblem(t, serve(t, router, rt.method, rt.path, `{}`), http.StatusUnprocessableEntity)
+		for _, rt := range []struct{ method, path, body string }{
+			{"POST", "/items", `{}`}, {"PUT", "/items/1", `{}`}, {"PATCH", "/items/1", `{"title":""}`},
+		} {
+			p := decodeProblem(t, serve(t, router, rt.method, rt.path, rt.body), http.StatusUnprocessableEntity)
 			if p.Detail != "title is required" {
 				t.Errorf("%s %s: detail = %q", rt.method, rt.path, p.Detail)
 			}
@@ -450,10 +463,90 @@ func TestBodyTooLarge(t *testing.T) {
 		router.ServeHTTP(w, r)
 	})
 	big := `{"title":"` + strings.Repeat("x", 64) + `"}`
-	for _, rt := range []struct{ method, path string }{{"POST", "/items"}, {"PUT", "/items/1"}} {
+	for _, rt := range []struct{ method, path string }{{"POST", "/items"}, {"PUT", "/items/1"}, {"PATCH", "/items/1"}} {
 		p := decodeProblem(t, serve(t, limited, rt.method, rt.path, big), http.StatusRequestEntityTooLarge)
 		if p.Detail != "request body is larger than 16 bytes" {
 			t.Errorf("%s: detail = %q", rt.method, p.Detail)
 		}
+	}
+}
+
+func TestPutAndPatchSemantics(t *testing.T) {
+	t.Parallel()
+	original := item{Title: "Hex Bolt", Qty: 5, Active: true, Price: 1.25}
+
+	tests := []struct {
+		name   string
+		method string
+		body   string
+		want   item
+	}{
+		{
+			"PUT replaces: missing fields become zero", "PUT", `{"title":"Renamed"}`,
+			item{ID: 1, Title: "Renamed"},
+		},
+		{
+			"PUT writes explicit zero values", "PUT", `{"title":"Hex Bolt","qty":0,"active":false,"price":0}`,
+			item{ID: 1, Title: "Hex Bolt"},
+		},
+		{
+			"PATCH changes only the fields sent", "PATCH", `{"qty":9}`,
+			item{ID: 1, Title: "Hex Bolt", Qty: 9, Active: true, Price: 1.25},
+		},
+		{
+			"PATCH writes explicit zero values", "PATCH", `{"qty":0,"active":false}`,
+			item{ID: 1, Title: "Hex Bolt", Qty: 0, Active: false, Price: 1.25},
+		},
+		{
+			"PATCH with an empty object changes nothing", "PATCH", `{}`,
+			item{ID: 1, Title: "Hex Bolt", Qty: 5, Active: true, Price: 1.25},
+		},
+		{
+			"PATCH ignores an id in the body", "PATCH", `{"id":77,"title":"Moved?"}`,
+			item{ID: 1, Title: "Moved?", Qty: 5, Active: true, Price: 1.25},
+		},
+		{"PUT ignores an id in the body", "PUT", `{"id":77,"title":"Moved?"}`, item{ID: 1, Title: "Moved?"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			store := newFakeStore(t, original)
+			rec := serve(t, newServer(t, store, nil), tt.method, "/items/1", tt.body)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+			}
+			if got := decode[item](t, rec); got != tt.want {
+				t.Errorf("response = %+v, want %+v", got, tt.want)
+			}
+			stored, err := store.Get(t.Context(), "1")
+			if err != nil || stored != tt.want {
+				t.Errorf("stored = %+v (%v), want %+v", stored, err, tt.want)
+			}
+			if _, err := store.Get(t.Context(), "77"); !errors.Is(err, brerrors.ErrNotFound) {
+				t.Errorf("a record was written under the body's id")
+			}
+		})
+	}
+}
+
+func TestPatchValidatesTheMergedValue(t *testing.T) {
+	t.Parallel()
+	var seen item
+	opts := &brcrud.Options[item]{Validate: func(in item) error {
+		seen = in
+		if in.Qty > 100 {
+			return errors.New("qty must be at most 100")
+		}
+		return nil
+	}}
+	store := newFakeStore(t, item{Title: "Hex Bolt", Qty: 5})
+	router := newServer(t, store, opts)
+
+	decodeProblem(t, serve(t, router, "PATCH", "/items/1", `{"qty":500}`), http.StatusUnprocessableEntity)
+	if seen.Title != "Hex Bolt" || seen.Qty != 500 {
+		t.Errorf("validator saw %+v, want the stored record with the patch applied", seen)
+	}
+	if stored, _ := store.Get(t.Context(), "1"); stored.Qty != 5 {
+		t.Errorf("rejected patch was stored: %+v", stored)
 	}
 }

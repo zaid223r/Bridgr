@@ -16,7 +16,7 @@ func BuildSpec() ([]byte, error) {
 			switch p.Method {
 			case "post":
 				delete(props, pk.JSONName)
-			case "put":
+			case "put", "patch":
 				prop := property(pk)
 				prop["readOnly"] = true
 				props[pk.JSONName] = prop
@@ -64,7 +64,7 @@ func BuildSpec() ([]byte, error) {
 		if len(parameters) > 0 {
 			methodSpec["parameters"] = parameters
 		}
-		if p.Method == "post" || p.Method == "put" {
+		if p.Method == "post" || p.Method == "put" || p.Method == "patch" {
 			methodSpec["requestBody"] = map[string]any{
 				"content": map[string]any{
 					"application/json": map[string]any{

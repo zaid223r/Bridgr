@@ -30,9 +30,20 @@ type Options[T any] struct {
 	Auth        func(r *http.Request) error
 }
 
-// RegisterCRUD mounts list, create, get, update and delete routes for T under
-// /path, backed by store, and documents them in the OpenAPI spec. A nil opts uses
-// the defaults. See parseQuery for how list query parameters become filters.
+// RegisterCRUD mounts these routes for T under /path, backed by store, and
+// documents them in the OpenAPI spec:
+//
+//	GET    /path       list (see parseQuery for filters)
+//	POST   /path       create
+//	GET    /path/{id}  get
+//	PUT    /path/{id}  replace: fields missing from the body are reset to zero
+//	PATCH  /path/{id}  merge: only fields present in the body change
+//	DELETE /path/{id}  delete
+//
+// PATCH reads the record, applies the body and writes it back, so two PATCHes to
+// the same record at the same moment can overwrite each other's changes.
+//
+// A nil opts uses the defaults.
 //
 // Errors are written as RFC 9457 problem details; see brerrors.FromError for the
 // status mapping.
@@ -55,6 +66,7 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 	api.RegisterPath("post", base, zero)
 	api.RegisterPath("get", base+"/{id}", zero)
 	api.RegisterPath("put", base+"/{id}", zero)
+	api.RegisterPath("patch", base+"/{id}", zero)
 	api.RegisterPath("delete", base+"/{id}", zero)
 
 	handle := func(method, pattern string, handler http.HandlerFunc) {
@@ -114,6 +126,27 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 		brcontext.JSON(w, http.StatusOK, updated)
 	})
 
+	handle("PATCH", base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		current, err := store.Get(r.Context(), id)
+		if err != nil {
+			brerrors.WriteError(w, r, err)
+			return
+		}
+		// Decoding into the stored value leaves fields absent from the body as
+		// they are. A body id is ignored: Store.Update takes the key from id.
+		merged, ok := decodeInto(w, r, current, opts.Validate)
+		if !ok {
+			return
+		}
+		updated, err := store.Update(r.Context(), id, merged)
+		if err != nil {
+			brerrors.WriteError(w, r, err)
+			return
+		}
+		brcontext.JSON(w, http.StatusOK, updated)
+	})
+
 	handle("DELETE", base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if err := store.Delete(r.Context(), r.PathValue("id")); err != nil {
 			brerrors.WriteError(w, r, err)
@@ -144,11 +177,21 @@ func withAuth(auth func(*http.Request) error, next http.HandlerFunc) http.Handle
 	}
 }
 
-// decodeInput reads the JSON body into a T and validates it. On failure it writes
-// a 400, 413 or 422 problem and returns false.
+// decodeInput reads the JSON body into a zero T and validates it. On failure it
+// writes a 400, 413 or 422 problem and returns false.
 func decodeInput[T any](w http.ResponseWriter, r *http.Request, validate func(T) error) (T, bool) {
-	var input T
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	var zero T
+	return decodeInto(w, r, zero, validate)
+}
+
+// decodeInto decodes the JSON body over input, so fields the body doesn't mention
+// keep their values, then validates the result. The body must be a JSON object.
+func decodeInto[T any](w http.ResponseWriter, r *http.Request, input T, validate func(T) error) (T, bool) {
+	raw, err := readObject(r)
+	if err == nil {
+		err = json.Unmarshal(raw, &input)
+	}
+	if err != nil {
 		p := brerrors.New(http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		if tooBig, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			p = brerrors.New(http.StatusRequestEntityTooLarge,
@@ -176,4 +219,17 @@ func mustModel[T any](path string) *brschema.Model {
 		panic(fmt.Sprintf("bridgr: registering /%s: %v", path, err))
 	}
 	return m
+}
+
+// readObject reads the body and checks it is a single JSON object. A bare null
+// would otherwise decode as "no changes", and an array as a type error.
+func readObject(r *http.Request) (json.RawMessage, error) {
+	var raw json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		return nil, err
+	}
+	if len(raw) == 0 || raw[0] != '{' {
+		return nil, errors.New("body must be a JSON object")
+	}
+	return raw, nil
 }
