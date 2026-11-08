@@ -63,6 +63,12 @@ app.ListenAndServe()
   (`application/problem+json`): 400 bad input, 401/403 from your `Auth` func, 404 missing
   records, 422 failed validation. Internal errors return a generic 500 and are logged, so
   database messages never leak to clients.
+- **Hooks and events**: `CRUDOptions.Hooks` runs business rules around writes
+  (`BeforeCreate`, `AfterCreate`, `BeforeUpdate` for PUT and PATCH, `AfterUpdate`,
+  `BeforeDelete`, `AfterDelete`). Before hooks run before validation, can fill in fields
+  and can reject a write with any error (e.g. `brerrors.ErrForbidden` → 403). Every
+  successful write also publishes a `brcap.Event` (`created`, `updated`, `deleted`) to the
+  app's event bus, for modules like webhooks or audit logs.
 - **Middleware**: app-wide (`Config.Middleware`, `app.AddMiddleware`) and per resource
   (`CRUDOptions.Middleware`), all plain `func(http.Handler) http.Handler`. Built in: request
   IDs (`X-Request-ID`, echoed and logged, also in error bodies) and panic recovery (a logged

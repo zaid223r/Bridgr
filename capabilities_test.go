@@ -2,6 +2,7 @@ package bridgr_test
 
 import (
 	"context"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -113,5 +114,40 @@ func TestModulesShareCapabilities(t *testing.T) {
 	}
 	if alone.kv == nil {
 		t.Error("module without a provider should fall back to MemoryKV")
+	}
+}
+
+// busModule provides an EventBus; it is added after the resource on purpose.
+type busModule struct{ bus *brcap.MemoryEventBus }
+
+func (busModule) Name() string { return "events" }
+
+func (m busModule) Register(app *bridgr.App) error {
+	return bridgr.Provide[brcap.EventBus](app, m.bus)
+}
+
+func TestCRUDPublishesToTheAppEventBus(t *testing.T) {
+	t.Parallel()
+	app := newApp(t) // registers /todos before any bus exists
+	bus := brcap.NewMemoryEventBus()
+	var got []string
+	bus.Subscribe(func(_ context.Context, e brcap.Event) {
+		got = append(got, e.Resource+" "+e.Action+" "+e.ID+" "+e.RequestID)
+	})
+	if err := app.Use(busModule{bus: bus}); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest("POST", "/todos", strings.NewReader(`{"title":"x"}`))
+	req.Header.Set("X-Request-ID", "req-7")
+	app.Handler().ServeHTTP(httptest.NewRecorder(), req)
+	if len(got) != 1 || got[0] != "todos created 1 req-7" {
+		t.Errorf("events = %v", got)
+	}
+
+	noBus := newApp(t)
+	rec := httptest.NewRecorder()
+	noBus.Handler().ServeHTTP(rec, httptest.NewRequest("POST", "/todos", strings.NewReader(`{"title":"x"}`)))
+	if rec.Code != 201 {
+		t.Errorf("without an event bus: status %d", rec.Code)
 	}
 }

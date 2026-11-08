@@ -4,14 +4,18 @@ package brcrud
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/zaid223r/Bridgr/api"
+	"github.com/zaid223r/Bridgr/core/brcap"
 	"github.com/zaid223r/Bridgr/core/brcontext"
 	"github.com/zaid223r/Bridgr/core/brerrors"
 	"github.com/zaid223r/Bridgr/core/brhttp"
@@ -38,6 +42,27 @@ type Options[T any] struct {
 	DefaultLimit int
 	// MaxLimit is the largest limit a client may ask for. Default 200.
 	MaxLimit int
+
+	// Hooks run business rules around writes.
+	Hooks Hooks[T]
+	// Events, if set, receives a brcap.Event after every successful create,
+	// replace, update and delete. bridgr.CRUD sets it to the app's event bus.
+	Events brcap.EventBus
+}
+
+// Hooks run around the writes of one resource. Before hooks run after the body
+// is decoded and before Validate, so they can fill in fields (timestamps,
+// defaults, the owner from brcap.PrincipalFrom); an error rejects the request
+// and is mapped like any other (brerrors.ValidationError → 422, ErrForbidden →
+// 403, ErrConflict → 409, anything else → 500). After hooks run once the write
+// has succeeded and can't fail it. Update hooks run for both PUT and PATCH.
+type Hooks[T any] struct {
+	BeforeCreate func(ctx context.Context, v *T) error
+	AfterCreate  func(ctx context.Context, v T)
+	BeforeUpdate func(ctx context.Context, id string, v *T) error
+	AfterUpdate  func(ctx context.Context, v T)
+	BeforeDelete func(ctx context.Context, id string) error
+	AfterDelete  func(ctx context.Context, id string)
 }
 
 // RegisterCRUD mounts these routes for T under /path, backed by store, and
@@ -116,8 +141,34 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 		brcontext.JSON(w, http.StatusOK, items)
 	})
 
+	emit := func(r *http.Request, action, id string, data any) {
+		if opts.Events == nil {
+			return
+		}
+		opts.Events.Publish(r.Context(), brcap.Event{
+			Resource: path, Action: action, ID: id, Data: data,
+			At: time.Now(), RequestID: brcontext.RequestID(r.Context()),
+		})
+	}
+	keyOf := func(v T) string {
+		return fmt.Sprint(reflect.ValueOf(v).FieldByIndex(model.PrimaryKey.Index).Interface())
+	}
+	updateHook := func(id string) func(context.Context, *T) error {
+		if opts.Hooks.BeforeUpdate == nil {
+			return nil
+		}
+		return func(ctx context.Context, v *T) error { return opts.Hooks.BeforeUpdate(ctx, id, v) }
+	}
+	afterUpdate := func(r *http.Request, id string, v T) {
+		if opts.Hooks.AfterUpdate != nil {
+			opts.Hooks.AfterUpdate(r.Context(), v)
+		}
+		emit(r, brcap.Updated, id, v)
+	}
+
 	handle("POST", base, func(w http.ResponseWriter, r *http.Request) {
-		input, ok := decodeInput(w, r, opts.Validate)
+		var zero T
+		input, ok := decodeInto(w, r, zero, opts.Hooks.BeforeCreate, opts.Validate)
 		if !ok {
 			return
 		}
@@ -126,6 +177,10 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 			brerrors.WriteError(w, r, err)
 			return
 		}
+		if opts.Hooks.AfterCreate != nil {
+			opts.Hooks.AfterCreate(r.Context(), created)
+		}
+		emit(r, brcap.Created, keyOf(created), created)
 		brcontext.JSON(w, http.StatusCreated, created)
 	})
 
@@ -139,15 +194,18 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 	})
 
 	handle("PUT", base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
-		input, ok := decodeInput(w, r, opts.Validate)
+		id := r.PathValue("id")
+		var zero T
+		input, ok := decodeInto(w, r, zero, updateHook(id), opts.Validate)
 		if !ok {
 			return
 		}
-		updated, err := store.Update(r.Context(), r.PathValue("id"), input)
+		updated, err := store.Update(r.Context(), id, input)
 		if err != nil {
 			brerrors.WriteError(w, r, err)
 			return
 		}
+		afterUpdate(r, id, updated)
 		brcontext.JSON(w, http.StatusOK, updated)
 	})
 
@@ -160,7 +218,7 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 		}
 		// Decoding into the stored value leaves fields absent from the body as
 		// they are. A body id is ignored: Store.Update takes the key from id.
-		merged, ok := decodeInto(w, r, current, opts.Validate)
+		merged, ok := decodeInto(w, r, current, updateHook(id), opts.Validate)
 		if !ok {
 			return
 		}
@@ -169,14 +227,26 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 			brerrors.WriteError(w, r, err)
 			return
 		}
+		afterUpdate(r, id, updated)
 		brcontext.JSON(w, http.StatusOK, updated)
 	})
 
 	handle("DELETE", base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if err := store.Delete(r.Context(), r.PathValue("id")); err != nil {
+		id := r.PathValue("id")
+		if before := opts.Hooks.BeforeDelete; before != nil {
+			if err := before(r.Context(), id); err != nil {
+				brerrors.WriteError(w, r, err)
+				return
+			}
+		}
+		if err := store.Delete(r.Context(), id); err != nil {
 			brerrors.WriteError(w, r, err)
 			return
 		}
+		if opts.Hooks.AfterDelete != nil {
+			opts.Hooks.AfterDelete(r.Context(), id)
+		}
+		emit(r, brcap.Deleted, id, nil)
 		w.WriteHeader(http.StatusNoContent)
 	})
 }
@@ -202,16 +272,11 @@ func withAuth(auth func(*http.Request) error, next http.HandlerFunc) http.Handle
 	}
 }
 
-// decodeInput reads the JSON body into a zero T and validates it. On failure it
-// writes a 400, 413 or 422 problem and returns false.
-func decodeInput[T any](w http.ResponseWriter, r *http.Request, validate func(T) error) (T, bool) {
-	var zero T
-	return decodeInto(w, r, zero, validate)
-}
-
 // decodeInto decodes the JSON body over input, so fields the body doesn't mention
-// keep their values, then validates the result. The body must be a JSON object.
-func decodeInto[T any](w http.ResponseWriter, r *http.Request, input T, validate func(T) error) (T, bool) {
+// keep their values, runs the before hook, then validates the result. The body
+// must be a JSON object. On failure it writes a 400, 413, 422 (or the hook's
+// mapped error) and returns false.
+func decodeInto[T any](w http.ResponseWriter, r *http.Request, input T, before func(context.Context, *T) error, validate func(T) error) (T, bool) {
 	raw, err := readObject(r)
 	if err == nil {
 		err = json.Unmarshal(raw, &input)
@@ -223,30 +288,29 @@ func decodeInto[T any](w http.ResponseWriter, r *http.Request, input T, validate
 				fmt.Sprintf("request body is larger than %d bytes", tooBig.Limit))
 		}
 		p.Instance = r.URL.Path
+		p.RequestID = brcontext.RequestID(r.Context())
 		brerrors.Write(w, p)
 		return input, false
+	}
+	if before != nil {
+		if err := before(r.Context(), &input); err != nil {
+			brerrors.WriteError(w, r, err)
+			return input, false
+		}
 	}
 	if validate != nil {
 		if err := validate(input); err != nil {
 			p := brerrors.FromError(r, err)
 			if p.Status != http.StatusUnprocessableEntity {
 				p = brerrors.New(http.StatusUnprocessableEntity, err.Error())
+				p.Instance = r.URL.Path
+				p.RequestID = brcontext.RequestID(r.Context())
 			}
-			p.Instance = r.URL.Path
 			brerrors.Write(w, p)
 			return input, false
 		}
 	}
 	return input, true
-}
-
-// mustModel parses T's schema and panics with the resource path if it is invalid.
-func mustModel[T any](path string) *brschema.Model {
-	m, err := brschema.Of[T]()
-	if err != nil {
-		panic(fmt.Sprintf("bridgr: registering /%s: %v", path, err))
-	}
-	return m
 }
 
 // readObject reads the body and checks it is a single JSON object. A bare null
@@ -260,4 +324,13 @@ func readObject(r *http.Request) (json.RawMessage, error) {
 		return nil, errors.New("body must be a JSON object")
 	}
 	return raw, nil
+}
+
+// mustModel parses T's schema and panics with the resource path if it is invalid.
+func mustModel[T any](path string) *brschema.Model {
+	m, err := brschema.Of[T]()
+	if err != nil {
+		panic(fmt.Sprintf("bridgr: registering /%s: %v", path, err))
+	}
+	return m
 }

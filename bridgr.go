@@ -23,6 +23,7 @@ import (
 	"syscall"
 
 	"github.com/zaid223r/Bridgr/api"
+	"github.com/zaid223r/Bridgr/core/brcap"
 	"github.com/zaid223r/Bridgr/core/brcrud"
 	"github.com/zaid223r/Bridgr/core/brhttp"
 	"github.com/zaid223r/Bridgr/core/brstore"
@@ -74,9 +75,37 @@ func (a *App) AddMiddleware(mw ...func(http.Handler) http.Handler) {
 // CRUD mounts list, create, get, replace, update and delete endpoints for T
 // under /path, backed by store, and documents them. It panics on an invalid
 // model or when the app has already started; see brcrud.RegisterCRUD.
+//
+// Unless opts.Events is set, changes are published to the brcap.EventBus a
+// module provides, looked up when each event happens, so the providing module
+// may be added before or after the resource.
 func CRUD[T any](a *App, path string, store brstore.Store[T], opts *CRUDOptions[T]) {
 	a.mustNotBeStarted("bridgr.CRUD /" + path)
-	brcrud.RegisterCRUD(a.router, path, store, opts)
+	var o CRUDOptions[T]
+	if opts != nil {
+		o = *opts
+	}
+	if o.Events == nil {
+		o.Events = appEvents{a}
+	}
+	brcrud.RegisterCRUD(a.router, path, store, &o)
+}
+
+// appEvents publishes to whatever EventBus the app has at the time; with none,
+// events are dropped.
+type appEvents struct{ app *App }
+
+func (e appEvents) Publish(ctx context.Context, ev brcap.Event) {
+	if bus, ok := Lookup[brcap.EventBus](e.app); ok {
+		bus.Publish(ctx, ev)
+	}
+}
+
+func (e appEvents) Subscribe(fn func(context.Context, brcap.Event)) func() {
+	if bus, ok := Lookup[brcap.EventBus](e.app); ok {
+		return bus.Subscribe(fn)
+	}
+	return func() {}
 }
 
 func (a *App) mustNotBeStarted(what string) {
