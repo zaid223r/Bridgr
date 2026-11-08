@@ -1,6 +1,6 @@
 # Bridgr roadmap
 
-One feature per day, one branch per feature. Tell Claude **"next"** and it picks up the first
+One feature per branch, one branch per PR. Tell Claude **"next"** and it picks up the first
 unchecked feature below. Sub-task boxes are ticked on the feature branch as the work lands;
 the feature's own box is ticked in the branch's last commit, so it reaches `main` together with
 the work when the PR is squash-merged. When to merge,
@@ -93,7 +93,7 @@ operators and pagination are built once, on the Store path only, instead of also
 ## Phase 4: Framework core
 
 The core stays small: struct → endpoints, storage, OpenAPI, and the hooks modules need to
-plug in. Modules (Phase 8) are built only on these public hooks.
+plug in. Modules (Phase 9) are built only on these public hooks.
 
 - [x] **`feat/app`**: one entry point, `bridgr.New(cfg)` → `bridgr.CRUD[T](app, "todos", store, opts)` → `app.Run()`
   - [x] root package `bridgr` wraps router, server and docs; existing packages keep working
@@ -120,23 +120,82 @@ plug in. Modules (Phase 8) are built only on these public hooks.
   - [x] `NoContent` → 204; options for operationId, summary, tags, status, documented errors, middleware
   - [x] wildcard/field mismatches, unsupported types and GET bodies panic at startup
 
-## Phase 5: Speed
+## Phase 5: Developer experience
+
+The target: register the database once, keep one file per table (the model plus optional
+request and response types), and wire each table in `main` with `bridgr.CRUD` and its options.
+
+```go
+// posts.go
+type Post struct {
+	ID        int64     `json:"id" bridgr:"readonly"`
+	UserID    int64     `json:"user_id" bridgr:"ref=users"`
+	Title     string    `json:"title"`
+	CreatedAt time.Time `json:"created_at" bridgr:"readonly"`
+	Author    *User     `json:"author,omitempty" bridgr:"include=user_id"`
+}
+
+// main.go
+app := bridgr.New(bridgr.Config{DB: bridgr.Postgres(os.Getenv("DATABASE_URL"))})
+bridgr.CRUD[User](app, "users", nil)
+bridgr.CRUD[Post](app, "posts", &bridgr.CRUDOptions[Post]{
+	Filters: bridgr.Filters{"user_id": bridgr.Exact, "title": bridgr.Exact | bridgr.Contains},
+	Sort:    []string{"created_at", "title"},
+	NestedUnder: "users", // also GET/POST /users/{id}/posts
+})
+```
+
+Decisions: one app-level database (a per-resource store can still override it); request and
+response shapes come from struct tags for the common cases and from typed structs with mapping
+functions for anything custom; nothing is filterable or sortable until listed; relations are
+declared on the model, with no ORM and no lazy loading; anything that writes several records
+runs in a transaction. Relations and includes use only `brstore.Store` (an `in` filter), so
+they work on every backend, NoSQL included.
+
+- [ ] **`feat/app-db`**: register storage once
+  - [ ] `Config.DB` with `bridgr.SQLite`, `bridgr.Postgres`, `bridgr.MySQL`, `bridgr.Memory`
+  - [ ] `bridgr.CRUD[T](app, path, opts)` builds the store from the app's database; `Options.Store` overrides it
+  - [ ] opt-in table creation at startup for development
+- [ ] **`feat/field-tags`**: shape requests and responses with tags
+  - [ ] `bridgr:"readonly"` (ignored on input, e.g. ids and timestamps), `bridgr:"writeonly"` (accepted, never returned, e.g. passwords)
+  - [ ] reflected in the OpenAPI `<Model>` and `<Model>Input` schemas (`readOnly` / `writeOnly`)
+- [ ] **`feat/filter-config`**: per-field filter and sort control, deny by default
+  - [ ] `Options.Filters` maps a field to its allowed operators (`Exact`, `Contains`, `Range`, `In`, ...); `Options.Sort` lists sortable fields
+  - [ ] other fields and operators get a 400; replaces `FilterableFields` and `GenericFiltering`
+  - [ ] OpenAPI documents only the allowed parameters and operators
+- [ ] **`feat/typed-io`**: custom request and response types per resource
+  - [ ] `Options.Create`, `Options.Update` (`bridgr.Input(func(In) (T, error))`) and `Options.Response` (`bridgr.Output(func(T) Out)`)
+  - [ ] OpenAPI uses the custom types; the TypeScript example shows one
+- [ ] **`feat/transactions`**: several writes, all or nothing
+  - [ ] `bridgr.Tx(ctx, app, fn)`; every store call inside `fn` joins the transaction through the context
+  - [ ] CRUD writes and their hooks run in one transaction, so a failing after-hook rolls back
+  - [ ] store contract suite covers commit and rollback
+- [ ] **`feat/relations`**: references between models
+  - [ ] `bridgr:"ref=<resource>"` checks the referenced record exists on write (422, not a database error)
+  - [ ] deleting a referenced record is refused (409) unless the child sets `OnDelete: bridgr.Cascade`, which deletes in the same transaction
+  - [ ] relations shown in OpenAPI
+- [ ] **`feat/nested-routes`**: `Options.NestedUnder` mounts `GET`/`POST /<parent>/{id}/<children>` with the reference filled in
+- [ ] **`feat/include`**: `?include=author` expands relations with one extra query per relation (no N+1); only declared relations, documented in OpenAPI
+- [ ] **`feat/batch-create`**: opt-in `POST /<resource>/batch`, all or nothing, with per-item 422 errors
+- [ ] **`example/project-layout`**: users, posts and orders, one file per table, using everything above, including a multi-create order endpoint built with `bridgr.Handle` and `bridgr.Tx`
+
+## Phase 6: Speed
 
 - [ ] **`perf/benchmarks`**: reproducible suite vs plain `net/http`, Gin, Echo, Fiber, Huma (separate module)
 - [ ] **`perf/hot-path`**: cut allocations: pooled buffers, prepared statements, precomputed responses
 - [ ] **`feat/json-codecs`**: codec interface, optional faster JSON codec as a separate module
 
-## Phase 6: NoSQL
+## Phase 7: NoSQL
 
-- [ ] **`feat/mongostore`**: MongoDB adapter as a separate module, passes the contract suite
+- [ ] **`feat/mongostore`**: MongoDB adapter as a separate module, passes the contract suite (transactions included, on a replica set)
 - [ ] **`feat/mongo-filters`**: filter operators, pagination and ObjectID support on MongoDB
 
-## Phase 7: Core release
+## Phase 8: Core release
 
 - [ ] **`docs/guides`**: README rewrite, runnable godoc `Example` tests, pkg.go.dev polish
 - [ ] **`release/v0.1.0`**: CHANGELOG, tag, GitHub release
 
-## Phase 8: Modules (after the core release)
+## Phase 9: Modules (after the core release)
 
 Each module is its **own repository** (`github.com/zaid223r/bridgr-<name>`) with its own
 `go.mod`, CI and releases. They stay fully compatible with each other because:
@@ -165,4 +224,4 @@ needs the user's okay. Module order is decided when the core ships.
 ## Later (not scheduled)
 
 - CLI: `bridgr new`, project scaffolding
-- Migrations, relations/preloading, soft delete, multi-tenancy
+- Migrations, soft delete, multi-tenancy, many-to-many relations
