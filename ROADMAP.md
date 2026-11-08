@@ -78,7 +78,9 @@ operators and pagination are built once, on the Store path only, instead of also
 
 - [x] **`feat/openapi-schemas`**: OpenAPI 3.1 with `components`, request + response schemas, error schemas
   - [x] deterministic output, golden-file tests
-- [ ] **`test/openapi-validation`**: validate the generated spec with `kin-openapi` in tests
+- [x] **`test/openapi-validation`**: validate the generated spec in tests (`pb33f/libopenapi-validator`, which supports 3.1)
+  - [x] the document passes the OpenAPI 3.1 schema
+  - [x] real requests and responses for every documented status match the spec
 - [ ] **`feat/docs-ui`**: replace Swagger UI with [Scalar](https://github.com/scalar/scalar) at `/docs`
   - [ ] `@scalar/api-reference` standalone bundle, version-pinned and embedded with `go:embed` (no CDN at runtime)
   - [ ] options: page title, theme, dark mode, and an opt-in to load the pinned bundle from a CDN instead (smaller binary)

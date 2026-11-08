@@ -107,7 +107,7 @@ branch only with `--force-with-lease`, and only after a rebase.
 | Logging | `log/slog` | |
 | JSON | `encoding/json` behind a codec interface | faster codecs as opt-in modules |
 | API docs UI | Scalar (`@scalar/api-reference`), pinned and embedded | replaces Swagger UI; no CDN at runtime by default |
-| Spec validation (tests only) | `getkin/kin-openapi` | |
+| Spec validation (tests only) | `pb33f/libopenapi` + `libopenapi-validator` | supports OpenAPI 3.1 and validates real requests/responses against the spec |
 | Integration tests | `compose.yaml` + service containers in CI | no testcontainers: keeps Docker client libraries out of `go.mod` |
 
 No ORM. Storage goes through `brstore.Store`; SQL lives in `sqlstore` dialects. `gorm` struct tags are read only so GORM models migrate unchanged.
