@@ -46,7 +46,7 @@ func TestNewMemoryRejectsBadModels(t *testing.T) {
 func TestMemoryStringKey(t *testing.T) {
 	t.Parallel()
 	type sku struct {
-		Code string `json:"code" gorm:"primaryKey"`
+		Code string `json:"code" db:",pk"`
 		Name string `json:"name"`
 	}
 	s, err := brstore.NewMemory[sku]()

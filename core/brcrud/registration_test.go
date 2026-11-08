@@ -8,24 +8,24 @@ import (
 
 	"github.com/zaid223r/Bridgr/core/brcrud"
 	"github.com/zaid223r/Bridgr/core/brhttp"
+	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
-// noopModel satisfies brcrud.BridgrModel for any T; registration tests never
-// call it.
-type noopModel[T any] struct{}
+// nopStore satisfies brstore.Store for any T; registration tests never call it.
+type nopStore[T any] struct{}
 
-func (noopModel[T]) List(context.Context, map[string][]string) ([]T, error) { return nil, nil }
+func (nopStore[T]) List(context.Context, brstore.Query) ([]T, error) { return nil, nil }
 
-func (noopModel[T]) Get(context.Context, string) (T, error) {
+func (nopStore[T]) Get(context.Context, string) (T, error) {
 	var zero T
 	return zero, nil
 }
 
-func (noopModel[T]) Create(_ context.Context, in T) (T, error) { return in, nil }
+func (nopStore[T]) Create(_ context.Context, in T) (T, error) { return in, nil }
 
-func (noopModel[T]) Update(_ context.Context, _ string, in T) (T, error) { return in, nil }
+func (nopStore[T]) Update(_ context.Context, _ string, in T) (T, error) { return in, nil }
 
-func (noopModel[T]) Delete(context.Context, string) error { return nil }
+func (nopStore[T]) Delete(context.Context, string) error { return nil }
 
 type typoFilter struct {
 	ID    int    `json:"id"`
@@ -59,21 +59,21 @@ func TestRegistrationFailsFast(t *testing.T) {
 		{
 			name: "unknown filterable field",
 			register: func(r *brhttp.Router) {
-				brcrud.RegisterCRUDRoutes[typoFilter](r, "typos", noopModel[typoFilter]{}, nil)
+				brcrud.RegisterCRUD[typoFilter](r, "typos", nopStore[typoFilter]{}, nil)
 			},
 			want: []string{"/typos", `"titel"`, "typoFilter"},
 		},
 		{
 			name: "model is not a struct",
 			register: func(r *brhttp.Router) {
-				brcrud.RegisterCRUDRoutes[string](r, "strings", noopModel[string]{}, nil)
+				brcrud.RegisterCRUD[string](r, "strings", nopStore[string]{}, nil)
 			},
 			want: []string{"/strings", "not a struct"},
 		},
 		{
-			name: "GORM model without primary key",
+			name: "model without primary key",
 			register: func(r *brhttp.Router) {
-				brcrud.RegisterCRUD[noPK](r, "nopk", nil, nil)
+				brcrud.RegisterCRUD[noPK](r, "nopk", nopStore[noPK]{}, nil)
 			},
 			want: []string{"/nopk", "noPK has no primary key"},
 		},
@@ -99,7 +99,7 @@ func TestValidModelRegisters(t *testing.T) {
 	t.Parallel()
 	router := brhttp.NewRouter()
 	if msg := panicMessage(func() {
-		brcrud.RegisterCRUD[typoFixed](router, "fixed", nil, nil)
+		brcrud.RegisterCRUD[typoFixed](router, "fixed", nopStore[typoFixed]{}, nil)
 	}); msg != "" {
 		t.Fatalf("valid model panicked: %s", msg)
 	}

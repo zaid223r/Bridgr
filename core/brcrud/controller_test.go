@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -17,115 +15,101 @@ import (
 	"github.com/zaid223r/Bridgr/core/brcrud"
 	"github.com/zaid223r/Bridgr/core/brerrors"
 	"github.com/zaid223r/Bridgr/core/brhttp"
+	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
 type item struct {
-	ID    int    `json:"id"`
-	Title string `json:"title"`
+	ID     int64   `json:"id"`
+	Title  string  `json:"title"`
+	Qty    int     `json:"qty"`
+	Active bool    `json:"active"`
+	Price  float64 `json:"price"`
 }
 
-var errNotFound = fmt.Errorf("item: %w", brerrors.ErrNotFound)
+func (item) FilterableFields() []string { return []string{"title", "qty", "active"} }
 
-// memModel is an in-memory brcrud.BridgrModel that also records the arguments
-// it was called with, so tests can check what the handlers passed through.
-type memModel struct {
-	mu          sync.Mutex
-	items       map[string]item
-	nextID      int
-	lastFilters map[string][]string
-	lastID      string
-	lastCtx     context.Context
-	// fail, when set, is returned by every method to simulate a storage failure.
-	fail error
+// fakeStore is an in-memory store that records what the handlers passed in and
+// can simulate a storage failure.
+type fakeStore struct {
+	*brstore.Memory[item]
+
+	mu        sync.Mutex
+	fail      error
+	lastCtx   context.Context
+	lastQuery brstore.Query
+	lastID    string
 }
 
-func newMemModel(seed ...item) *memModel {
-	m := &memModel{items: map[string]item{}, nextID: 1}
+func newFakeStore(t *testing.T, seed ...item) *fakeStore {
+	t.Helper()
+	mem, err := brstore.NewMemory[item]()
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, it := range seed {
-		m.items[strconv.Itoa(it.ID)] = it
-		m.nextID = max(m.nextID, it.ID+1)
-	}
-	return m
-}
-
-func (m *memModel) List(ctx context.Context, filters map[string][]string) ([]item, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.lastCtx = ctx
-	if m.fail != nil {
-		return nil, m.fail
-	}
-	m.lastFilters = filters
-	for key := range filters {
-		if key != "title" {
-			return nil, &brerrors.InvalidFilterFieldError{Fields: []string{key}}
+		if _, err := mem.Create(t.Context(), it); err != nil {
+			t.Fatal(err)
 		}
 	}
-	keys := slices.Sorted(maps.Keys(m.items))
-	out := make([]item, 0, len(keys))
-	for _, k := range keys {
-		out = append(out, m.items[k])
-	}
-	return out, nil
+	return &fakeStore{Memory: mem}
 }
 
-func (m *memModel) Get(ctx context.Context, id string) (item, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.lastCtx = ctx
-	if m.fail != nil {
-		return item{}, m.fail
-	}
-	m.lastID = id
-	it, ok := m.items[id]
-	if !ok {
-		return item{}, errNotFound
-	}
-	return it, nil
+func (f *fakeStore) record(ctx context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.lastCtx, f.lastID = ctx, id
+	return f.fail
 }
 
-func (m *memModel) Create(ctx context.Context, input item) (item, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.lastCtx = ctx
-	if m.fail != nil {
-		return item{}, m.fail
+func (f *fakeStore) List(ctx context.Context, q brstore.Query) ([]item, error) {
+	if err := f.record(ctx, ""); err != nil {
+		return nil, err
 	}
-	input.ID = m.nextID
-	m.nextID++
-	m.items[strconv.Itoa(input.ID)] = input
-	return input, nil
+	f.mu.Lock()
+	f.lastQuery = q
+	f.mu.Unlock()
+	return f.Memory.List(ctx, q)
 }
 
-func (m *memModel) Update(ctx context.Context, id string, input item) (item, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.lastCtx = ctx
-	if m.fail != nil {
-		return item{}, m.fail
+func (f *fakeStore) Get(ctx context.Context, id string) (item, error) {
+	if err := f.record(ctx, id); err != nil {
+		return item{}, err
 	}
-	m.lastID = id
-	if _, ok := m.items[id]; !ok {
-		return item{}, errNotFound
-	}
-	input.ID, _ = strconv.Atoi(id)
-	m.items[id] = input
-	return input, nil
+	return f.Memory.Get(ctx, id)
 }
 
-func (m *memModel) Delete(ctx context.Context, id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.lastCtx = ctx
-	m.lastID = id
-	if m.fail != nil {
-		return m.fail
+func (f *fakeStore) Create(ctx context.Context, v item) (item, error) {
+	if err := f.record(ctx, ""); err != nil {
+		return v, err
 	}
-	if _, ok := m.items[id]; !ok {
-		return errNotFound
+	return f.Memory.Create(ctx, v)
+}
+
+func (f *fakeStore) Update(ctx context.Context, id string, v item) (item, error) {
+	if err := f.record(ctx, id); err != nil {
+		return v, err
 	}
-	delete(m.items, id)
-	return nil
+	return f.Memory.Update(ctx, id, v)
+}
+
+func (f *fakeStore) Delete(ctx context.Context, id string) error {
+	if err := f.record(ctx, id); err != nil {
+		return err
+	}
+	return f.Memory.Delete(ctx, id)
+}
+
+var seedItems = []item{
+	{Title: "Hex Bolt", Qty: 5, Active: true},
+	{Title: "wing nut", Qty: 0},
+	{Title: "Carriage bolt", Qty: 12, Active: true},
+}
+
+func newServer(t *testing.T, store *fakeStore, opts *brcrud.Options[item]) *brhttp.Router {
+	t.Helper()
+	router := brhttp.NewRouter()
+	brcrud.RegisterCRUD[item](router, "items", store, opts)
+	return router
 }
 
 func serve(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
@@ -165,11 +149,12 @@ func decodeProblem(t *testing.T, rec *httptest.ResponseRecorder, wantStatus int)
 	return p
 }
 
-func newServer(t *testing.T, model *memModel, opts *brcrud.BridgrOptions[item]) *brhttp.Router {
-	t.Helper()
-	router := brhttp.NewRouter()
-	brcrud.RegisterCRUDRoutes[item](router, "items", model, opts)
-	return router
+func titles(items []item) []string {
+	out := make([]string, len(items))
+	for i, it := range items {
+		out[i] = it.Title
+	}
+	return out
 }
 
 func TestCRUDRoutes(t *testing.T) {
@@ -177,107 +162,195 @@ func TestCRUDRoutes(t *testing.T) {
 
 	t.Run("list", func(t *testing.T) {
 		t.Parallel()
-		model := newMemModel(item{ID: 1, Title: "a"}, item{ID: 2, Title: "b"})
-		rec := serve(t, newServer(t, model, nil), "GET", "/items?title=a", "")
-
+		rec := serve(t, newServer(t, newFakeStore(t, seedItems...), nil), "GET", "/items", "")
 		if rec.Code != http.StatusOK {
-			t.Fatalf("status = %d, want 200", rec.Code)
+			t.Fatalf("status = %d", rec.Code)
 		}
 		if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
-			t.Errorf("Content-Type = %q, want application/json", ct)
+			t.Errorf("Content-Type = %q", ct)
 		}
-		if got := decode[[]item](t, rec); len(got) != 2 {
-			t.Errorf("got %d items, want 2", len(got))
-		}
-		if got := model.lastFilters["title"]; !slices.Equal(got, []string{"a"}) {
-			t.Errorf("filters passed to model = %v, want [a]", got)
+		if got := titles(decode[[]item](t, rec)); !slices.Equal(got, titles(seedItems)) {
+			t.Errorf("items = %v", got)
 		}
 	})
 
 	t.Run("create", func(t *testing.T) {
 		t.Parallel()
-		rec := serve(t, newServer(t, newMemModel(), nil), "POST", "/items", `{"title":"new"}`)
+		rec := serve(t, newServer(t, newFakeStore(t, seedItems...), nil), "POST", "/items", `{"title":"new"}`)
 		if rec.Code != http.StatusCreated {
-			t.Fatalf("status = %d, want 201", rec.Code)
+			t.Fatalf("status = %d", rec.Code)
 		}
-		if got := decode[item](t, rec); got.ID != 1 || got.Title != "new" {
-			t.Errorf("created = %+v, want {ID:1 Title:new}", got)
+		if got := decode[item](t, rec); got.ID != 4 || got.Title != "new" {
+			t.Errorf("created = %+v", got)
 		}
 	})
 
 	t.Run("get", func(t *testing.T) {
 		t.Parallel()
-		model := newMemModel(item{ID: 7, Title: "seven"})
-		rec := serve(t, newServer(t, model, nil), "GET", "/items/7", "")
-		if rec.Code != http.StatusOK {
-			t.Fatalf("status = %d, want 200", rec.Code)
+		store := newFakeStore(t, seedItems...)
+		rec := serve(t, newServer(t, store, nil), "GET", "/items/2", "")
+		if rec.Code != http.StatusOK || decode[item](t, rec).Title != "wing nut" {
+			t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
 		}
-		if got := decode[item](t, rec); got.Title != "seven" {
-			t.Errorf("title = %q, want seven", got.Title)
-		}
-		if model.lastID != "7" {
-			t.Errorf("id passed to model = %q, want 7", model.lastID)
+		if store.lastID != "2" {
+			t.Errorf("id passed to store = %q", store.lastID)
 		}
 	})
 
-	t.Run("update", func(t *testing.T) {
+	t.Run("update writes zero values", func(t *testing.T) {
 		t.Parallel()
-		model := newMemModel(item{ID: 3, Title: "old"})
-		rec := serve(t, newServer(t, model, nil), "PUT", "/items/3", `{"title":"new"}`)
+		store := newFakeStore(t, seedItems...)
+		rec := serve(t, newServer(t, store, nil), "PUT", "/items/1", `{"title":"Hex Bolt","qty":0,"active":false}`)
 		if rec.Code != http.StatusOK {
-			t.Fatalf("status = %d, want 200", rec.Code)
+			t.Fatalf("status = %d", rec.Code)
 		}
-		if got := decode[item](t, rec); got.ID != 3 || got.Title != "new" {
-			t.Errorf("updated = %+v, want {ID:3 Title:new}", got)
-		}
-		if model.lastID != "3" {
-			t.Errorf("id passed to model = %q, want 3", model.lastID)
+		got, _ := store.Get(t.Context(), "1")
+		if got.Qty != 0 || got.Active {
+			t.Errorf("stored = %+v, want qty 0 and inactive", got)
 		}
 	})
 
 	t.Run("delete", func(t *testing.T) {
 		t.Parallel()
-		model := newMemModel(item{ID: 4})
-		rec := serve(t, newServer(t, model, nil), "DELETE", "/items/4", "")
-		if rec.Code != http.StatusNoContent {
-			t.Fatalf("status = %d, want 204", rec.Code)
+		store := newFakeStore(t, seedItems...)
+		rec := serve(t, newServer(t, store, nil), "DELETE", "/items/3", "")
+		if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
+			t.Fatalf("status = %d, body %q", rec.Code, rec.Body)
 		}
-		if rec.Body.Len() != 0 {
-			t.Errorf("204 response has body %q", rec.Body.String())
-		}
-		if model.lastID != "4" {
-			t.Errorf("id passed to model = %q, want 4", model.lastID)
+		if _, err := store.Get(t.Context(), "3"); !errors.Is(err, brerrors.ErrNotFound) {
+			t.Errorf("record still there: %v", err)
 		}
 	})
 
 	t.Run("unsupported method", func(t *testing.T) {
 		t.Parallel()
-		rec := serve(t, newServer(t, newMemModel(), nil), "PATCH", "/items/1", `{}`)
-		if rec.Code != http.StatusMethodNotAllowed {
-			t.Fatalf("status = %d, want 405", rec.Code)
-		}
-		if allow := rec.Header().Get("Allow"); allow != "DELETE, GET, HEAD, PUT" {
-			t.Errorf("Allow = %q", allow)
+		rec := serve(t, newServer(t, newFakeStore(t), nil), "PATCH", "/items/1", `{}`)
+		if rec.Code != http.StatusMethodNotAllowed || rec.Header().Get("Allow") != "DELETE, GET, HEAD, PUT" {
+			t.Fatalf("status = %d, Allow = %q", rec.Code, rec.Header().Get("Allow"))
 		}
 	})
 
 	t.Run("trailing slash", func(t *testing.T) {
 		t.Parallel()
-		rec := serve(t, newServer(t, newMemModel(), nil), "GET", "/items/", "")
-		if rec.Code != http.StatusNotFound {
-			t.Fatalf("status = %d, want 404", rec.Code)
+		if rec := serve(t, newServer(t, newFakeStore(t), nil), "GET", "/items/", ""); rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d", rec.Code)
 		}
 	})
 }
 
-func TestCRUDOptions(t *testing.T) {
+func TestListFilters(t *testing.T) {
+	t.Parallel()
+	store := newFakeStore(t, seedItems...)
+	router := newServer(t, store, nil)
+
+	tests := []struct {
+		query string
+		want  []string
+	}{
+		{"?title=BOLT", []string{"Hex Bolt", "Carriage bolt"}},
+		{"?active=true", []string{"Hex Bolt", "Carriage bolt"}},
+		{"?qty=12", []string{"Carriage bolt"}},
+		{"?qty=0&qty=5", []string{"Hex Bolt", "wing nut"}},
+		{"?title=bolt&qty=5", []string{"Hex Bolt"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			rec := serve(t, router, "GET", "/items"+tt.query, "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+			}
+			if got := titles(decode[[]item](t, rec)); !slices.Equal(got, tt.want) {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+
+	serve(t, router, "GET", "/items?qty=0&qty=5&title=nut", "")
+	want := []brstore.Filter{
+		{Field: "qty", Op: brstore.In, Value: []any{int64(0), int64(5)}},
+		{Field: "title", Op: brstore.Contains, Value: "nut"},
+	}
+	if got := fmt.Sprint(store.lastQuery.Filters); got != fmt.Sprint(want) {
+		t.Errorf("query passed to store = %s, want %s", got, fmt.Sprint(want))
+	}
+}
+
+type errorCase struct {
+	name         string
+	method, path string
+	body         string
+	fail         error
+	wantStatus   int
+	wantDetail   string
+	wantInvalid  []string
+}
+
+func TestCRUDErrors(t *testing.T) {
+	t.Parallel()
+
+	tests := []errorCase{
+		{
+			name: "filter on non-filterable field", method: "GET", path: "/items?price=1&secret=x", wantStatus: 400,
+			wantDetail: "invalid filter fields: price, secret", wantInvalid: []string{"price", "secret"},
+		},
+		{
+			name: "unparsable filter value", method: "GET", path: "/items?active=maybe", wantStatus: 400,
+			wantDetail: `invalid value "maybe" for filter active: want boolean`, wantInvalid: []string{"active"},
+		},
+		{
+			name: "malformed JSON on create", method: "POST", path: "/items", body: `{"title":`, wantStatus: 400,
+			wantDetail: "invalid JSON body: unexpected EOF",
+		},
+		{name: "malformed JSON on update", method: "PUT", path: "/items/1", body: `[]`, wantStatus: 400},
+		{name: "get missing", method: "GET", path: "/items/99", wantStatus: 404},
+		{name: "id of the wrong type", method: "GET", path: "/items/abc", wantStatus: 404},
+		{name: "update missing", method: "PUT", path: "/items/99", body: `{"title":"x"}`, wantStatus: 404},
+		{name: "delete missing", method: "DELETE", path: "/items/99", wantStatus: 404},
+		{name: "duplicate id", method: "POST", path: "/items", body: `{"id":1,"title":"dup"}`, wantStatus: 409},
+	}
+	failure := errors.New(`pq: relation "items" does not exist`)
+	for _, rt := range []struct{ method, path, body string }{
+		{"GET", "/items", ""}, {"POST", "/items", `{}`}, {"GET", "/items/1", ""}, {"PUT", "/items/1", `{}`}, {"DELETE", "/items/1", ""},
+	} {
+		tests = append(tests, errorCase{
+			name: "storage failure " + rt.method + " " + rt.path, method: rt.method, path: rt.path, body: rt.body,
+			fail: failure, wantStatus: 500, wantDetail: "The server could not complete the request.",
+		})
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			store := newFakeStore(t, seedItems...)
+			store.fail = tt.fail
+			p := decodeProblem(t, serve(t, newServer(t, store, nil), tt.method, tt.path, tt.body), tt.wantStatus)
+
+			if tt.wantDetail != "" && p.Detail != tt.wantDetail {
+				t.Errorf("detail = %q, want %q", p.Detail, tt.wantDetail)
+			}
+			if !slices.Equal(p.InvalidFields, tt.wantInvalid) {
+				t.Errorf("invalid_fields = %v, want %v", p.InvalidFields, tt.wantInvalid)
+			}
+			if wantInstance, _, _ := strings.Cut(tt.path, "?"); p.Instance != wantInstance {
+				t.Errorf("instance = %q, want %q", p.Instance, wantInstance)
+			}
+		})
+	}
+}
+
+var allRoutes = []struct{ method, path, body string }{
+	{"GET", "/items", ""},
+	{"POST", "/items", `{"title":"b"}`},
+	{"GET", "/items/1", ""},
+	{"PUT", "/items/1", `{"title":"b"}`},
+	{"DELETE", "/items/1", ""},
+}
+
+func TestOptions(t *testing.T) {
 	t.Parallel()
 
 	t.Run("auth", func(t *testing.T) {
 		t.Parallel()
-		routes := []struct{ method, path string }{
-			{"GET", "/items"}, {"POST", "/items"}, {"GET", "/items/1"}, {"PUT", "/items/1"}, {"DELETE", "/items/1"},
-		}
 		tests := []struct {
 			name       string
 			authErr    error
@@ -291,18 +364,17 @@ func TestCRUDOptions(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				t.Parallel()
-				opts := &brcrud.BridgrOptions[item]{Auth: func(*http.Request) error { return tt.authErr }}
-				router := newServer(t, newMemModel(item{ID: 1, Title: "a"}), opts)
-				for _, rt := range routes {
-					rec := serve(t, router, rt.method, rt.path, `{"title":"b"}`)
+				opts := &brcrud.Options[item]{Auth: func(*http.Request) error { return tt.authErr }}
+				router := newServer(t, newFakeStore(t, seedItems...), opts)
+				for _, rt := range allRoutes {
+					rec := serve(t, router, rt.method, rt.path, rt.body)
 					if tt.wantStatus == 0 {
 						if rec.Code >= 400 {
 							t.Errorf("%s %s: status = %d, want success", rt.method, rt.path, rec.Code)
 						}
 						continue
 					}
-					p := decodeProblem(t, rec, tt.wantStatus)
-					if p.Detail != "" {
+					if p := decodeProblem(t, rec, tt.wantStatus); p.Detail != "" {
 						t.Errorf("%s %s: auth problem leaks detail %q", rt.method, rt.path, p.Detail)
 					}
 				}
@@ -312,17 +384,17 @@ func TestCRUDOptions(t *testing.T) {
 
 	t.Run("validation fails", func(t *testing.T) {
 		t.Parallel()
-		opts := &brcrud.BridgrOptions[item]{Validate: func(in item) error {
+		opts := &brcrud.Options[item]{Validate: func(in item) error {
 			if in.Title == "" {
 				return errors.New("title is required")
 			}
 			return nil
 		}}
-		router := newServer(t, newMemModel(item{ID: 1}), opts)
+		router := newServer(t, newFakeStore(t, seedItems...), opts)
 		for _, rt := range []struct{ method, path string }{{"POST", "/items"}, {"PUT", "/items/1"}} {
 			p := decodeProblem(t, serve(t, router, rt.method, rt.path, `{}`), http.StatusUnprocessableEntity)
 			if p.Detail != "title is required" {
-				t.Errorf("%s %s: detail = %q, want the validation message", rt.method, rt.path, p.Detail)
+				t.Errorf("%s %s: detail = %q", rt.method, rt.path, p.Detail)
 			}
 		}
 	})
@@ -341,98 +413,38 @@ func TestCRUDOptions(t *testing.T) {
 				}
 			}
 		}
-		opts := &brcrud.BridgrOptions[item]{Middlewares: []func(http.HandlerFunc) http.HandlerFunc{mw("outer"), mw("inner")}}
-		rec := serve(t, newServer(t, newMemModel(), opts), "GET", "/items", "")
-		if rec.Code != http.StatusOK {
-			t.Fatalf("status = %d, want 200", rec.Code)
+		opts := &brcrud.Options[item]{Middlewares: []func(http.HandlerFunc) http.HandlerFunc{mw("outer"), mw("inner")}}
+		if rec := serve(t, newServer(t, newFakeStore(t), opts), "GET", "/items", ""); rec.Code != http.StatusOK {
+			t.Fatalf("status = %d", rec.Code)
 		}
 		if got := fmt.Sprint(calls); got != "[outer inner]" {
-			t.Errorf("middleware order = %s, want [outer inner]", got)
+			t.Errorf("middleware order = %s", got)
 		}
 	})
 }
 
-type errorCase struct {
-	name         string
-	method, path string
-	body         string
-	fail         error
-	wantStatus   int
-	wantDetail   string
-	wantInvalid  []string
-}
-
-func TestCRUDErrors(t *testing.T) {
-	t.Parallel()
-
-	tests := []errorCase{
-		{
-			name: "invalid filter", method: "GET", path: "/items?secret=x", wantStatus: 400,
-			wantDetail: "invalid filter field: secret", wantInvalid: []string{"secret"},
-		},
-		{
-			name: "malformed JSON on create", method: "POST", path: "/items", body: `{"title":`, wantStatus: 400,
-			wantDetail: "invalid JSON body: unexpected EOF",
-		},
-		{name: "malformed JSON on update", method: "PUT", path: "/items/1", body: `[]`, wantStatus: 400},
-		{name: "get missing", method: "GET", path: "/items/99", wantStatus: 404},
-		{name: "update missing", method: "PUT", path: "/items/99", body: `{"title":"x"}`, wantStatus: 404},
-		{name: "delete missing", method: "DELETE", path: "/items/99", wantStatus: 404},
-	}
-	failure := errors.New(`pq: relation "items" does not exist`)
-	for _, rt := range []struct{ method, path, body string }{
-		{"GET", "/items", ""}, {"POST", "/items", `{}`}, {"GET", "/items/1", ""}, {"PUT", "/items/1", `{}`}, {"DELETE", "/items/1", ""},
-	} {
-		tests = append(tests, errorCase{
-			name: "storage failure " + rt.method + " " + rt.path, method: rt.method, path: rt.path, body: rt.body,
-			fail: failure, wantStatus: 500, wantDetail: "The server could not complete the request.",
-		})
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			model := newMemModel(item{ID: 1, Title: "a"})
-			model.fail = tt.fail
-			p := decodeProblem(t, serve(t, newServer(t, model, nil), tt.method, tt.path, tt.body), tt.wantStatus)
-
-			if tt.wantDetail != "" && p.Detail != tt.wantDetail {
-				t.Errorf("detail = %q, want %q", p.Detail, tt.wantDetail)
-			}
-			if !slices.Equal(p.InvalidFields, tt.wantInvalid) {
-				t.Errorf("invalid_fields = %v, want %v", p.InvalidFields, tt.wantInvalid)
-			}
-			if wantInstance, _, _ := strings.Cut(tt.path, "?"); p.Instance != wantInstance {
-				t.Errorf("instance = %q, want %q", p.Instance, wantInstance)
-			}
-		})
-	}
-}
-
 type ctxKey struct{}
 
-func TestRequestContextReachesModel(t *testing.T) {
+func TestRequestContextReachesStore(t *testing.T) {
 	t.Parallel()
 	tag := func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			next(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, "req-42")))
 		}
 	}
-	for _, rt := range []struct{ method, path, body string }{
-		{"GET", "/items", ""}, {"POST", "/items", `{}`}, {"GET", "/items/1", ""}, {"PUT", "/items/1", `{}`}, {"DELETE", "/items/1", ""},
-	} {
-		model := newMemModel(item{ID: 1})
-		opts := &brcrud.BridgrOptions[item]{Middlewares: []func(http.HandlerFunc) http.HandlerFunc{tag}}
-		serve(t, newServer(t, model, opts), rt.method, rt.path, rt.body)
-		if model.lastCtx == nil || model.lastCtx.Value(ctxKey{}) != "req-42" {
-			t.Errorf("%s %s: model did not receive the request context", rt.method, rt.path)
+	for _, rt := range allRoutes {
+		store := newFakeStore(t, seedItems...)
+		opts := &brcrud.Options[item]{Middlewares: []func(http.HandlerFunc) http.HandlerFunc{tag}}
+		serve(t, newServer(t, store, opts), rt.method, rt.path, rt.body)
+		if store.lastCtx == nil || store.lastCtx.Value(ctxKey{}) != "req-42" {
+			t.Errorf("%s %s: store did not receive the request context", rt.method, rt.path)
 		}
 	}
 }
 
 func TestBodyTooLarge(t *testing.T) {
 	t.Parallel()
-	router := newServer(t, newMemModel(item{ID: 1}), nil)
+	router := newServer(t, newFakeStore(t, seedItems...), nil)
 	limited := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, 16)
 		router.ServeHTTP(w, r)

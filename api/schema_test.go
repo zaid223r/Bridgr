@@ -6,7 +6,7 @@ import (
 )
 
 type specTodo struct {
-	ID     uint    `json:"id" gorm:"primaryKey"`
+	ID     uint    `json:"id" db:",pk"`
 	Title  string  `json:"title"`
 	Note   *string `json:"note"`
 	Secret string  `json:"-"`

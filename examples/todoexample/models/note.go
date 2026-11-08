@@ -1,9 +1,8 @@
-// Package models defines the resources served by the todo example.
 package models
 
 // Note is a free-text note. Only its title can be filtered.
 type Note struct {
-	ID    uint   `json:"id" gorm:"primaryKey"`
+	ID    int64  `json:"id" db:",pk"`
 	Title string `json:"title"`
 	Body  string `json:"body"`
 }

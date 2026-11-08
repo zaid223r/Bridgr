@@ -19,8 +19,9 @@ type Field struct {
 	GoName string
 	// JSONName is the key used in request and response bodies and in filters.
 	JSONName string
-	// Column is the database column: the gorm:"column:..." tag if present,
-	// otherwise the snake_case Go name ("CreatedAt" → "created_at", "UserID" → "user_id").
+	// Column is the database column: the name in a db:"..." tag, else a
+	// gorm:"column:..." tag (read so GORM models migrate unchanged), else the
+	// snake_case Go name ("CreatedAt" → "created_at", "UserID" → "user_id").
 	Column string
 	// Type is the Go type, with pointers kept.
 	Type reflect.Type
@@ -49,8 +50,8 @@ type Model struct {
 	Name string
 	// Fields are the JSON-visible fields in encoding/json order.
 	Fields []*Field
-	// PrimaryKey is the field tagged gorm:"primaryKey", else the field named ID,
-	// else nil.
+	// PrimaryKey is the field tagged db:",pk" (or gorm:"primaryKey"), else the
+	// field named ID, else nil.
 	PrimaryKey *Field
 	// Filterable are the fields list endpoints may filter on, in declaration order.
 	Filterable []*Field
@@ -263,7 +264,7 @@ func newField(sf reflect.StructField, index []int, jsonName, jsonOpts string) *F
 		Index:     index,
 		Nullable:  sf.Type.Kind() == reflect.Pointer,
 		OmitEmpty: hasOption(jsonOpts, "omitempty") || hasOption(jsonOpts, "omitzero"),
-		taggedPK:  gormPrimaryKey(sf),
+		taggedPK:  taggedPrimaryKey(sf),
 	}
 	f.OpenAPIType, f.Format = openAPIType(sf.Type)
 	return f
@@ -279,6 +280,9 @@ func hasOption(opts, want string) bool {
 }
 
 func column(sf reflect.StructField) string {
+	if name, _, _ := strings.Cut(sf.Tag.Get("db"), ","); name != "" {
+		return name
+	}
 	for part := range strings.SplitSeq(sf.Tag.Get("gorm"), ";") {
 		key, val, ok := strings.Cut(strings.TrimSpace(part), ":")
 		if ok && strings.EqualFold(key, "column") && val != "" {
@@ -301,7 +305,10 @@ func primaryKey(fields []*Field) *Field {
 	return byName
 }
 
-func gormPrimaryKey(sf reflect.StructField) bool {
+func taggedPrimaryKey(sf reflect.StructField) bool {
+	if _, opts, _ := strings.Cut(sf.Tag.Get("db"), ","); hasOption(opts, "pk") {
+		return true
+	}
 	for part := range strings.SplitSeq(sf.Tag.Get("gorm"), ";") {
 		p := strings.ToLower(strings.TrimSpace(part))
 		if p == "primarykey" || p == "primary_key" {

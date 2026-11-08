@@ -189,6 +189,35 @@ func TestMatchesEncodingJSON(t *testing.T) {
 	}
 }
 
+func TestDBTags(t *testing.T) {
+	t.Parallel()
+	type tagged struct {
+		Code   string `json:"code" db:"sku,pk"`
+		Name   string `json:"name" db:"display_name" gorm:"column:ignored"`
+		Legacy string `json:"legacy" gorm:"column:old_name"`
+		ID     int    `json:"id"`
+	}
+	m, err := brschema.Of[tagged]()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.PrimaryKey == nil || m.PrimaryKey.JSONName != "code" || m.PrimaryKey.Column != "sku" {
+		t.Errorf("primary key = %+v, want code/sku from db tag (over the field named ID)", m.PrimaryKey)
+	}
+	for name, want := range map[string]string{"name": "display_name", "legacy": "old_name", "id": "id"} {
+		if f, _ := m.FieldByJSON(name); f.Column != want {
+			t.Errorf("%s column = %q, want %q", name, f.Column, want)
+		}
+	}
+
+	type pkOnly struct {
+		Key string `json:"key" db:",pk"`
+	}
+	if m, _ := brschema.Of[pkOnly](); m.PrimaryKey == nil || m.PrimaryKey.Column != "key" {
+		t.Errorf(`db:",pk" without a name: %+v`, m.PrimaryKey)
+	}
+}
+
 func TestPrimaryKey(t *testing.T) {
 	t.Parallel()
 

@@ -56,7 +56,7 @@ type Audit struct {
 
 type OrderItem struct {
 	*Audit
-	SKU      string     `json:"sku" gorm:"primaryKey"`
+	SKU      string     `json:"sku" db:",pk"`
 	Qty      uint16     `json:"qty"`
 	Label    string     `json:"label" gorm:"column:display_label"`
 	Shipped  *time.Time `json:"shipped"`

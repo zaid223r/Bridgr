@@ -29,8 +29,11 @@ Turn Go structs into documented REST APIs with one line per resource.
 - **Storage** behind one `brstore.Store` interface with typed queries (filters, operators,
   sorting, paging) and a shared contract test suite every backend must pass. Available
   now: in-memory (`brstore.NewMemory`), and SQLite and PostgreSQL on plain `database/sql`
-  with no ORM (`sqlstore.New[T](db, sqlstore.SQLite)` or `sqlstore.Postgres`). PostgreSQL
-  through GORM still works but is being removed.
+  with no ORM (`sqlstore.New[T](db, sqlstore.SQLite)` or `sqlstore.Postgres`).
+- **Struct tags**: `json` names fields in the API; `db:"column"` or `db:"column,pk"` sets
+  the database column and primary key (default: snake_case of the field name, and the
+  field named `ID`). GORM's `column` and `primaryKey` tags are also read, so GORM models
+  work unchanged.
 
 ## Quick start
 
@@ -63,7 +66,7 @@ func main() {
 	}
 
 	router := brhttp.NewRouter()
-	brcrud.RegisterStore[Todo](router, "todos", todos, nil)
+	brcrud.RegisterCRUD[Todo](router, "todos", todos, nil)
 
 	server := brhttp.NewServer(router, brhttp.Config{Addr: ":8080"})
 	if err := server.ListenAndServe(); err != nil { // stops gracefully on Ctrl+C / SIGTERM
@@ -90,6 +93,8 @@ db, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
 todos, err := sqlstore.New[Todo](db, sqlstore.Postgres)
 ```
 
+[examples/todoexample](examples/todoexample) is a complete Postgres example.
+
 Then try:
 
 - `POST /todos` with `{"title":"buy milk"}`
@@ -99,7 +104,6 @@ Then try:
 
 ## Known limitations (being fixed, see the roadmap)
 
-- `PUT` ignores zero values, so `{"done": false}` doesn't clear a field.
 - List endpoints have no pagination yet.
 
 ## Where it's going
