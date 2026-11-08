@@ -1,4 +1,4 @@
-.PHONY: check fmt vet lint test race integration services-up services-down bench cover tidy
+.PHONY: check fmt vet lint test race integration services-up services-down bench cover tidy example-ts
 
 INTEGRATION_ENV := BRIDGR_POSTGRES_DSN="postgres://bridgr:bridgr@localhost:55432/bridgr?sslmode=disable" \
 	BRIDGR_MYSQL_DSN="bridgr:bridgr@tcp(localhost:53306)/bridgr?parseTime=true"
@@ -48,6 +48,10 @@ bench:
 cover:
 	go test -coverprofile=coverage.out $(PKGS)
 	go tool cover -html=coverage.out -o coverage.html
+
+## example-ts: regenerate the TypeScript client types and build the example app
+example-ts:
+	cd examples/typescript-client/web && bun install --frozen-lockfile && bun run gen && bun run build
 
 ## tidy: tidy go.mod
 tidy:

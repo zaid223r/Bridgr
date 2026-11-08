@@ -65,6 +65,26 @@ jobs:
           go-version: "1.27"
       - run: go test -race -count=1 -tags=integration ./...
 
+  typescript-example:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/typescript-client/web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.27"
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      # Regenerate the spec and TypeScript types from the Go API and fail if the
+      # committed ones are stale, then type-check and build the app against them.
+      - run: bun run gen
+      - run: git diff --exit-code -- openapi.json src/api/schema.d.ts
+      - run: bun run build
+
   lint:
     runs-on: ubuntu-latest
     steps:
