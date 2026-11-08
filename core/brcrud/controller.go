@@ -102,7 +102,7 @@ func RegisterCRUDRoutes[T any](
 		if !authCheck(r, w) {
 			return
 		}
-		id := brhttp.Params(r)["id"]
+		id := r.PathValue("id")
 		item, err := model.Get(id)
 		if err != nil {
 			brcontext.JSON(w, 404, map[string]string{"error": "Not found"})
@@ -115,7 +115,7 @@ func RegisterCRUDRoutes[T any](
 		if !authCheck(r, w) {
 			return
 		}
-		id := brhttp.Params(r)["id"]
+		id := r.PathValue("id")
 		var input T
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			brcontext.JSON(w, 400, map[string]string{"error": "Invalid input"})
@@ -139,7 +139,7 @@ func RegisterCRUDRoutes[T any](
 		if !authCheck(r, w) {
 			return
 		}
-		id := brhttp.Params(r)["id"]
+		id := r.PathValue("id")
 		err := model.Delete(id)
 		if err != nil {
 			brcontext.JSON(w, 500, map[string]string{"error": err.Error()})

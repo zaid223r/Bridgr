@@ -17,10 +17,10 @@ park or delete a branch is defined in [CLAUDE.md § Branch lifecycle](CLAUDE.md#
   - [x] `Makefile` with `check`, `test`, `integration`, `bench`, `cover`
   - [x] README: correct import paths, honest feature list, roadmap link
   - [x] `go.mod` targets Go 1.26
-- [ ] **`feat/stdlib-router`**: replace the hand-written router with `net/http.ServeMux`
-  - [ ] `GET /todos/{id}` patterns, `r.PathValue("id")`
-  - [ ] correct `405 Method Not Allowed` and trailing-slash behaviour
-  - [ ] `httptest` tests for every CRUD route
+- [x] **`feat/stdlib-router`**: replace the hand-written router with `net/http.ServeMux`
+  - [x] `GET /todos/{id}` patterns, `r.PathValue("id")`
+  - [x] correct `405 Method Not Allowed` and trailing-slash behaviour
+  - [x] `httptest` tests for every CRUD route
 - [ ] **`feat/problem-errors`**: consistent errors
   - [ ] rename `errors` package (it shadows the stdlib)
   - [ ] RFC 9457 `application/problem+json` responses
