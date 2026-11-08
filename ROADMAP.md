@@ -26,11 +26,11 @@ park or delete a branch is defined in [CLAUDE.md § Branch lifecycle](CLAUDE.md#
   - [x] RFC 9457 `application/problem+json` responses
   - [x] correct codes: 401 vs 403, 404 only for "not found", 500 otherwise, 204 with empty body
   - [x] tests for each error path
-- [ ] **`feat/model-schema`**: reflect once, cache forever
-  - [ ] `schema` package: JSON name, DB column, Go kind, primary key, `omitempty`, `json:"-"`
-  - [ ] embedded structs flattened
-  - [ ] cached per type, no reflection on requests
-  - [ ] tests + benchmark
+- [x] **`feat/model-schema`**: reflect once, cache forever
+  - [x] `schema` package: JSON name, DB column, Go kind, primary key, `omitempty`, `json:"-"`
+  - [x] embedded structs flattened
+  - [x] cached per type, no reflection on requests
+  - [x] tests + benchmark
 - [ ] **`feat/fail-fast-registration`**: invalid models fail at startup, not at request time
   - [ ] validate `FilterableFields` during registration
   - [ ] remove global `GenericFilteringEnabled` (unsafe: lets any column name reach SQL)

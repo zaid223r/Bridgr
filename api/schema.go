@@ -2,42 +2,37 @@ package api
 
 import (
 	"reflect"
+
+	"github.com/zaid223r/Bridgr/core/brschema"
 )
 
-// ReflectModel maps each field of a struct (or pointer to struct) to an OpenAPI
-// property keyed by its JSON name.
+// ReflectModel maps each JSON field of a struct (or pointer to struct) to an
+// OpenAPI property keyed by its JSON name. It panics if the model is invalid,
+// e.g. FilterableFields names a field that does not exist.
 func ReflectModel(model any) map[string]any {
-	t := reflect.TypeOf(model)
-	if t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-
-	properties := make(map[string]any)
-
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		jsonName := field.Tag.Get("json")
-		if jsonName == "" {
-			jsonName = field.Name
-		}
-		properties[jsonName] = map[string]string{
-			"type": mapGoType(field.Type.Kind()),
-		}
+	m := mustSchema(model)
+	properties := make(map[string]any, len(m.Fields))
+	for _, f := range m.Fields {
+		properties[f.JSONName] = property(f)
 	}
 	return properties
 }
 
-func mapGoType(k reflect.Kind) string {
-	switch k {
-	case reflect.Int, reflect.Int64:
-		return "integer"
-	case reflect.Bool:
-		return "boolean"
-	case reflect.Float64, reflect.Float32:
-		return "number"
-	case reflect.String:
-		return "string"
-	default:
-		return "object"
+func property(f *brschema.Field) map[string]any {
+	p := map[string]any{"type": f.OpenAPIType}
+	if f.Format != "" {
+		p["format"] = f.Format
 	}
+	if f.Nullable {
+		p["nullable"] = true
+	}
+	return p
+}
+
+func mustSchema(model any) *brschema.Model {
+	m, err := brschema.For(reflect.TypeOf(model))
+	if err != nil {
+		panic(err)
+	}
+	return m
 }
