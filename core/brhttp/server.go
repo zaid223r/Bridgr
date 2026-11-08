@@ -2,6 +2,8 @@ package brhttp
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,12 +11,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
+	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/zaid223r/Bridgr/api"
 	"github.com/zaid223r/Bridgr/core/brcontext"
+	"github.com/zaid223r/Bridgr/core/brerrors"
 )
 
 // Config configures a Server. Zero values use the defaults listed per field.
@@ -47,6 +53,11 @@ type Config struct {
 	Description string
 	// Docs customizes the /docs page (Scalar). Its title defaults to Title.
 	Docs api.DocsOptions
+	// Middleware wraps every route, in order: the first is the outermost. It
+	// runs after request IDs, logging and panic recovery are set up, so it can
+	// use them. CORS belongs here, since it must answer preflight requests for
+	// routes that don't handle OPTIONS.
+	Middleware []func(http.Handler) http.Handler
 }
 
 func (c Config) withDefaults() Config {
@@ -97,7 +108,11 @@ func NewServer(router *Router, cfg Config) *Server {
 			router.AddRoute("GET", api.ScalarAssetPath, api.ScalarAsset)
 		}
 	}
-	handler := withRequestContext(cfg.Logger, cfg.MaxBodyBytes, router)
+	var routes http.Handler = router
+	for _, mw := range slices.Backward(cfg.Middleware) {
+		routes = mw(routes)
+	}
+	handler := withRequestContext(cfg.Logger, cfg.MaxBodyBytes, routes)
 	return &Server{
 		cfg:     cfg,
 		handler: handler,
@@ -176,24 +191,32 @@ func serveSpec(build func() ([]byte, error)) http.HandlerFunc {
 	}
 }
 
-// withRequestContext puts logger in the request context, limits the body to
-// maxBody bytes (when positive) and logs one line per request.
+// RequestIDHeader carries the request ID in requests and responses.
+const RequestIDHeader = "X-Request-ID"
+
+// withRequestContext assigns a request ID, puts a logger tagged with it in the
+// request context, limits the body to maxBody bytes (when positive), turns
+// panics into 500 responses, and logs one line per request.
 func withRequestContext(logger *slog.Logger, maxBody int64, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		if maxBody > 0 {
 			r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 		}
-		r = r.WithContext(brcontext.WithLogger(r.Context(), logger))
+		id := requestID(r.Header.Get(RequestIDHeader))
+		w.Header().Set(RequestIDHeader, id)
+		reqLogger := logger.With(slog.String("request_id", id))
+		ctx := brcontext.WithRequestID(brcontext.WithLogger(r.Context(), reqLogger), id)
+		r = r.WithContext(ctx)
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 
-		next.ServeHTTP(rec, r)
+		serveRecovering(rec, r, next)
 
 		level := slog.LevelInfo
 		if rec.status >= http.StatusInternalServerError {
 			level = slog.LevelError
 		}
-		logger.LogAttrs(r.Context(), level, "request",
+		reqLogger.LogAttrs(r.Context(), level, "request",
 			slog.String("method", r.Method),
 			slog.String("path", r.URL.Path),
 			slog.Int("status", rec.status),
@@ -201,6 +224,52 @@ func withRequestContext(logger *slog.Logger, maxBody int64, next http.Handler) h
 			slog.Duration("duration", time.Since(start)),
 		)
 	})
+}
+
+// serveRecovering runs next and turns a panic into a logged 500. A panic with
+// http.ErrAbortHandler is re-raised: it is net/http's signal to drop the
+// connection silently.
+func serveRecovering(rec *statusRecorder, r *http.Request, next http.Handler) {
+	defer func() {
+		v := recover()
+		if v == nil {
+			return
+		}
+		if v == http.ErrAbortHandler { //nolint:errorlint // sentinel compared by identity, as net/http does
+			panic(v)
+		}
+		brcontext.Logger(r.Context()).ErrorContext(r.Context(), "panic serving request",
+			"method", r.Method, "path", r.URL.Path, "panic", fmt.Sprint(v), "stack", string(debug.Stack()))
+		if rec.wroteHeader {
+			return // too late for a clean error; the client sees a truncated response
+		}
+		p := brerrors.FromError(r, errors.New("panic"))
+		rec.Header().Del("Content-Length")
+		brerrors.Write(rec, p)
+	}()
+	next.ServeHTTP(rec, r)
+}
+
+// requestID returns the client's ID if it is short and safe to log and echo,
+// otherwise a new random one.
+func requestID(fromClient string) string {
+	if n := len(fromClient); n > 0 && n <= 128 && !strings.ContainsFunc(fromClient, unsafeIDRune) {
+		return fromClient
+	}
+	var b [16]byte
+	_, _ = rand.Read(b[:]) // crypto/rand.Read never fails
+	return hex.EncodeToString(b[:])
+}
+
+// unsafeIDRune reports runes not allowed in a client-supplied request ID: only
+// letters, digits, '-', '_' and '.' are echoed back and logged.
+func unsafeIDRune(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
+		return false
+	default:
+		return true
+	}
 }
 
 // statusRecorder captures the status code and body size for the request log.

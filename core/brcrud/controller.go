@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 
 	"github.com/zaid223r/Bridgr/api"
@@ -27,9 +28,11 @@ import (
 //
 // A Validate error is sent to the client as 422 with the error text as detail.
 type Options[T any] struct {
-	Middlewares []func(http.HandlerFunc) http.HandlerFunc
-	Validate    func(input T) error
-	Auth        func(r *http.Request) error
+	// Middleware wraps this resource's routes; the first is the outermost.
+	// App-wide middleware (Config.Middleware) runs before it.
+	Middleware []func(http.Handler) http.Handler
+	Validate   func(input T) error
+	Auth       func(r *http.Request) error
 
 	// DefaultLimit is the page size when a list request has no limit. Default 50.
 	DefaultLimit int
@@ -85,11 +88,11 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 	})
 
 	handle := func(method, pattern string, handler http.HandlerFunc) {
-		h := withAuth(opts.Auth, handler)
-		for i := len(opts.Middlewares) - 1; i >= 0; i-- {
-			h = opts.Middlewares[i](h)
+		var h http.Handler = withAuth(opts.Auth, handler)
+		for _, mw := range slices.Backward(opts.Middleware) {
+			h = mw(h)
 		}
-		router.AddRoute(method, pattern, h)
+		router.AddRoute(method, pattern, h.ServeHTTP)
 	}
 
 	handle("GET", base, func(w http.ResponseWriter, r *http.Request) {

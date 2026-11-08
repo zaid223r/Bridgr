@@ -423,17 +423,17 @@ func TestOptions(t *testing.T) {
 		t.Parallel()
 		var mu sync.Mutex
 		var calls []string
-		mw := func(name string) func(http.HandlerFunc) http.HandlerFunc {
-			return func(next http.HandlerFunc) http.HandlerFunc {
-				return func(w http.ResponseWriter, r *http.Request) {
+		mw := func(name string) func(http.Handler) http.Handler {
+			return func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					mu.Lock()
 					calls = append(calls, name)
 					mu.Unlock()
-					next(w, r)
-				}
+					next.ServeHTTP(w, r)
+				})
 			}
 		}
-		opts := &brcrud.Options[item]{Middlewares: []func(http.HandlerFunc) http.HandlerFunc{mw("outer"), mw("inner")}}
+		opts := &brcrud.Options[item]{Middleware: []func(http.Handler) http.Handler{mw("outer"), mw("inner")}}
 		if rec := serve(t, newServer(t, newFakeStore(t), opts), "GET", "/items", ""); rec.Code != http.StatusOK {
 			t.Fatalf("status = %d", rec.Code)
 		}
@@ -447,14 +447,14 @@ type ctxKey struct{}
 
 func TestRequestContextReachesStore(t *testing.T) {
 	t.Parallel()
-	tag := func(next http.HandlerFunc) http.HandlerFunc {
-		return func(w http.ResponseWriter, r *http.Request) {
-			next(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, "req-42")))
-		}
+	tag := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, "req-42")))
+		})
 	}
 	for _, rt := range allRoutes {
 		store := newFakeStore(t, seedItems...)
-		opts := &brcrud.Options[item]{Middlewares: []func(http.HandlerFunc) http.HandlerFunc{tag}}
+		opts := &brcrud.Options[item]{Middleware: []func(http.Handler) http.Handler{tag}}
 		serve(t, newServer(t, store, opts), rt.method, rt.path, rt.body)
 		if store.lastCtx == nil || store.lastCtx.Value(ctxKey{}) != "req-42" {
 			t.Errorf("%s %s: store did not receive the request context", rt.method, rt.path)

@@ -203,6 +203,7 @@ func problemSchema() map[string]any {
 			"status":         map[string]any{"type": "integer"},
 			"detail":         map[string]any{"type": "string"},
 			"instance":       map[string]any{"type": "string"},
+			"request_id":     map[string]any{"type": "string", "description": "The X-Request-ID of the request, for support."},
 			"invalid_fields": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 			"errors": map[string]any{
 				"type":        "array",

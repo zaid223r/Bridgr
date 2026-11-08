@@ -58,6 +58,8 @@ export interface components {
             }[];
             instance?: string;
             invalid_fields?: string[];
+            /** @description The X-Request-ID of the request, for support. */
+            request_id?: string;
             status: number;
             title: string;
             /**

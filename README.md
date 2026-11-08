@@ -63,6 +63,10 @@ app.ListenAndServe()
   (`application/problem+json`): 400 bad input, 401/403 from your `Auth` func, 404 missing
   records, 422 failed validation. Internal errors return a generic 500 and are logged, so
   database messages never leak to clients.
+- **Middleware**: app-wide (`Config.Middleware`, `app.AddMiddleware`) and per resource
+  (`CRUDOptions.Middleware`), all plain `func(http.Handler) http.Handler`. Built in: request
+  IDs (`X-Request-ID`, echoed and logged, also in error bodies) and panic recovery (a logged
+  500 instead of a dropped connection). Opt-in: `brmw.CORS(...)` with preflight handling.
 - **Production server**: `bridgr.New(bridgr.Config{...})` sets read/write/idle timeouts, caps request
   bodies (1 MiB by default, 413 above), logs every request with `log/slog`, passes the
   request context down to the database, and shuts down gracefully on SIGINT/SIGTERM.

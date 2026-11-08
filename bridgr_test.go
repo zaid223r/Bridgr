@@ -168,3 +168,25 @@ func TestOpenAPIWithoutStarting(t *testing.T) {
 	store, _ := brstore.NewMemory[Todo]()
 	bridgr.CRUD[Todo](app, "still-open", store, nil) // OpenAPI must not freeze registration
 }
+
+func TestAddMiddleware(t *testing.T) {
+	t.Parallel()
+	app := newApp(t)
+	app.AddMiddleware(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-From-Module", "yes")
+			next.ServeHTTP(w, r)
+		})
+	})
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/todos", nil))
+	if rec.Header().Get("X-From-Module") != "yes" || rec.Header().Get("X-Request-ID") == "" {
+		t.Errorf("headers = %v", rec.Header())
+	}
+	defer func() {
+		if recover() == nil {
+			t.Error("AddMiddleware after start must panic")
+		}
+	}()
+	app.AddMiddleware(func(h http.Handler) http.Handler { return h })
+}

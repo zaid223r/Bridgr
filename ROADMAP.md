@@ -107,7 +107,11 @@ plug in. Modules (Phase 8) are built only on these public hooks.
   - [x] field-level validation errors (`brerrors.ValidationError` → 422 with `errors`)
   - [x] in-memory implementations (`MemoryKV`, `MemoryScheduler`) for tests and fallbacks
   - resource events moved to `feat/hooks`, where the CRUD writes that publish them live
-- [ ] **`feat/middleware`**: global + per-resource middleware; built-ins: recover, request ID, CORS
+- [x] **`feat/middleware`**: global + per-resource middleware; built-ins: recover, request ID, CORS
+  - [x] request IDs (kept from `X-Request-ID` or generated) in the response, every log line and problem bodies
+  - [x] panics become logged 500s, for handlers and middleware alike
+  - [x] `Config.Middleware` / `app.AddMiddleware`, and per-resource `Options.Middleware`, all `func(http.Handler) http.Handler`
+  - [x] `brmw.CORS` with preflight handling; refuses credentials with `*`
 - [ ] **`feat/hooks`**: per-resource `BeforeCreate`, `AfterUpdate`, … for business rules, and resource events (created/updated/deleted) published to an event bus capability
 - [ ] **`feat/typed-handlers`**: `bridgr.Handle[In, Out]` for custom endpoints, documented in OpenAPI automatically
 
