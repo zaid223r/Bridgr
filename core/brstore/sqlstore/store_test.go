@@ -120,16 +120,24 @@ func TestWithTable(t *testing.T) {
 func TestContainsEscapesWildcards(t *testing.T) {
 	t.Parallel()
 	s, _ := newStore[storetest.Widget](t)
+	checkContainsEscapes(t, s)
+}
+
+// checkContainsEscapes verifies that %, _ and \ in a contains value match
+// literally. Every dialect's tests run it.
+func checkContainsEscapes(t *testing.T, s brstore.Store[storetest.Widget]) {
+	t.Helper()
 	for _, name := range []string{"100% cotton", "100 percent", "under_score", "underXscore", `back\slash`} {
 		if _, err := s.Create(t.Context(), storetest.Widget{Name: name, Released: time.Now()}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	tests := map[string][]string{
-		"%":  {"100% cotton"},
-		"_":  {"under_score"},
-		`\`:  {`back\slash`},
-		"0%": {"100% cotton"},
+		"%":      {"100% cotton"},
+		"_":      {"under_score"},
+		`\`:      {`back\slash`},
+		"0%":     {"100% cotton"},
+		"COTTON": {"100% cotton"},
 	}
 	for needle, want := range tests {
 		got, err := s.List(t.Context(), brstore.Query{Filters: []brstore.Filter{{Field: "name", Op: brstore.Contains, Value: needle}}})

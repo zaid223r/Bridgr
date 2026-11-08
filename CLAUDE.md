@@ -87,8 +87,10 @@ branch only with `--force-with-lease`, and only after a rebase.
 - Storage adapters must pass the shared **store contract test suite**, so SQL and NoSQL
   backends behave identically.
 - Unit tests use SQLite (pure Go, `modernc.org/sqlite`) or the in-memory store; Postgres,
-  MySQL and MongoDB run as integration tests behind the `integration` build tag, using
-  testcontainers locally and service containers in CI.
+  MySQL and MongoDB run as integration tests behind the `integration` build tag. They read
+  their DSN from `BRIDGR_<DB>_DSN`; `make integration` starts the databases from
+  `compose.yaml`, and CI uses service containers. Without a DSN they skip locally and fail
+  in CI. Each test uses its own table and drops it afterwards.
 - OpenAPI output is covered by golden files (`testdata/*.golden.json`, update with
   `go test ./... -update`).
 - Performance-sensitive code gets a benchmark (`BenchmarkXxx` with `b.ReportAllocs()`).
@@ -104,7 +106,7 @@ branch only with `--force-with-lease`, and only after a rebase.
 | Logging | `log/slog` | |
 | JSON | `encoding/json` behind a codec interface | faster codecs as opt-in modules |
 | Spec validation (tests only) | `getkin/kin-openapi` | |
-| Integration tests | `testcontainers-go` | |
+| Integration tests | `compose.yaml` + service containers in CI | no testcontainers: keeps Docker client libraries out of `go.mod` |
 
 GORM is being removed (see ROADMAP). Don't add new code that depends on it.
 
@@ -113,7 +115,7 @@ GORM is being removed (see ROADMAP). Don't add new code that depends on it.
 ```bash
 make check        # fmt + vet + lint + race tests: run before saying a feature is done
 make test         # unit tests
-make integration  # integration tests (needs Docker/OrbStack)
+make integration  # integration tests; starts databases from compose.yaml (needs Docker/OrbStack)
 make bench        # benchmarks
 make cover        # coverage report
 ```

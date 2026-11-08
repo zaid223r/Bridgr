@@ -28,9 +28,9 @@ Turn Go structs into documented REST APIs with one line per resource.
   request context down to the database, and shuts down gracefully on SIGINT/SIGTERM.
 - **Storage** behind one `brstore.Store` interface with typed queries (filters, operators,
   sorting, paging) and a shared contract test suite every backend must pass. Available
-  now: in-memory (`brstore.NewMemory`), SQLite on `database/sql` with no ORM
-  (`sqlstore.New[T](db, sqlstore.SQLite)`, pure Go via `modernc.org/sqlite`), and
-  PostgreSQL through GORM (being replaced by a faster `database/sql` layer).
+  now: in-memory (`brstore.NewMemory`), and SQLite and PostgreSQL on plain `database/sql`
+  with no ORM (`sqlstore.New[T](db, sqlstore.SQLite)` or `sqlstore.Postgres`). PostgreSQL
+  through GORM still works but is being removed.
 
 ## Quick start
 
@@ -81,9 +81,14 @@ todos, err := sqlstore.New[Todo](db, sqlstore.SQLite) // table "todos"
 err = todos.CreateTable(ctx)                          // for prototypes; use migrations in production
 ```
 
-PostgreSQL currently goes through GORM: `brcrud.RegisterCRUD[Todo](router, "todos", db, nil)`
-with `brdb.ConnectPostgres` (see [examples/todoexample](examples/todoexample)). A
-`database/sql` Postgres dialect is next on the roadmap.
+For PostgreSQL, open the database with any `database/sql` driver and use the Postgres
+dialect:
+
+```go
+// import _ "github.com/jackc/pgx/v5/stdlib"
+db, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
+todos, err := sqlstore.New[Todo](db, sqlstore.Postgres)
+```
 
 Then try:
 
@@ -106,7 +111,8 @@ middleware, and published benchmarks. Full plan: [ROADMAP.md](ROADMAP.md).
 ## Development
 
 ```bash
-make check   # format, vet, lint, race tests
+make check         # format, vet, lint, race tests
+make integration   # also runs Postgres tests (starts it with docker compose)
 ```
 
 Contributor and AI-assistant conventions are in [CLAUDE.md](CLAUDE.md).
