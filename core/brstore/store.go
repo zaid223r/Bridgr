@@ -30,6 +30,7 @@ import (
 //     breaks ties after the requested Sort. Where nil pointer fields sort is
 //     unspecified.
 //   - A query naming an unknown field returns an error wrapping ErrInvalidQuery.
+//   - A nil pointer field matches only Ne; every other operator excludes it.
 //   - A cancelled ctx returns an error wrapping ctx.Err().
 type Store[T any] interface {
 	List(ctx context.Context, q Query) ([]T, error)

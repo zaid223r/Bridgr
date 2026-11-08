@@ -47,9 +47,9 @@ park or delete a branch is defined in [CLAUDE.md § Branch lifecycle](CLAUDE.md#
   - [x] `Store[T]` with `Query` (filters, sort, page)
   - [x] in-memory store
   - [x] reusable **store contract test suite** that every adapter must pass
-- [ ] **`feat/sqlstore-sqlite`**: `database/sql` adapter, SQLite dialect
-  - [ ] precomputed SQL per model, placeholders per dialect
-  - [ ] passes the contract suite
+- [x] **`feat/sqlstore-sqlite`**: `database/sql` adapter, SQLite dialect
+  - [x] precomputed SQL per model, placeholders per dialect
+  - [x] passes the contract suite
 - [ ] **`fix/put-patch-semantics`**: `PUT` replaces, `PATCH` merges
   - [ ] fixes the bug where `{"done": false}` is silently ignored
   - [ ] tests for zero values
