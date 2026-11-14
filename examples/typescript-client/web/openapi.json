@@ -83,6 +83,22 @@
       }
     },
     "schemas": {
+      "NewTodo": {
+        "properties": {
+          "priority": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "priority"
+        ],
+        "type": "object"
+      },
       "Problem": {
         "description": "RFC 9457 problem details.",
         "properties": {
@@ -294,7 +310,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/TodoInput"
+                "$ref": "#/components/schemas/NewTodo"
               }
             }
           },

@@ -48,6 +48,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        NewTodo: {
+            /** Format: int64 */
+            priority: number;
+            title: string;
+        };
         /** @description RFC 9457 problem details. */
         Problem: {
             detail?: string;
@@ -212,7 +217,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["TodoInput"];
+                "application/json": components["schemas"]["NewTodo"];
             };
         };
         responses: {

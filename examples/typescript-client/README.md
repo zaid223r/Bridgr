@@ -38,7 +38,8 @@ builds the app.
 
 - `api.GET("/todos", { params: { query: { limit, offset, sort, title, done } } })`, with
   the total from the `X-Total-Count` header
-- `api.POST("/todos", { body: { title, priority } })`: the body type is `TodoInput`, so
-  there's no `id` to fill in
+- `api.POST("/todos", { body: { title, priority } })`: the body type is `NewTodo`, a
+  custom create type on the Go side (`CRUDOptions.Create: bridgr.Input(...)`), so there's
+  no `id` or `done` to fill in
 - `api.PATCH("/todos/{id}", ...)` sends only `done` when you tick a box
 - server errors arrive as typed `Problem` objects (try adding an empty title: 422)

@@ -121,6 +121,62 @@ app.ListenAndServe()
   OpenAPI follows: `User` marks `created_at` `readOnly` and has no `password`;
   `UserInput` has `password` (`writeOnly`) and no `created_at`.
 
+## One file per table
+
+A table's file holds the model, its optional request and response types, and how its
+endpoints behave. `main` only wires them up:
+
+```go
+// users.go
+type User struct {
+	ID           int64     `json:"id"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"password_hash"`
+	CreatedAt    time.Time `json:"created_at" bridgr:"readonly"`
+}
+
+type CreateUser struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type UpdateUser struct {
+	Email *string `json:"email"` // pointers tell "absent" from "empty"
+}
+
+type UserOut struct {
+	ID    int64  `json:"id"`
+	Email string `json:"email"`
+}
+
+var UserOptions = &bridgr.CRUDOptions[User]{
+	Create: bridgr.Input(func(ctx context.Context, in CreateUser) (User, error) {
+		return User{Email: in.Email, PasswordHash: hash(in.Password)}, nil
+	}),
+	Update: bridgr.Apply(func(ctx context.Context, u User, in UpdateUser) (User, error) {
+		if in.Email != nil {
+			u.Email = *in.Email
+		}
+		return u, nil
+	}),
+	Response: bridgr.Output(func(u User) UserOut { return UserOut{ID: u.ID, Email: u.Email} }),
+	Filters:  bridgr.Filters{"email": bridgr.Exact},
+}
+
+// main.go
+bridgr.CRUD[User](app, "users", UserOptions)
+```
+
+- `Create` (POST) reads a `CreateUser` and builds the record.
+- `Update` (PUT and PATCH) reads an `UpdateUser` and changes the stored record.
+- `Response` shapes every success body, lists included.
+
+An input type with a `Validate() error` method gets 422s. Hooks and
+`CRUDOptions.Validate` still run on the resulting record. The OpenAPI document (and so
+a generated client) shows `CreateUser`, `UpdateUser` and `UserOut`, and leaves the
+model's own schema out. Each of the three is optional; without them, the model is the
+body, shaped by its `readonly`/`writeonly` tags.
+
 ## Quick start
 
 No database needed: this uses the in-memory store.
