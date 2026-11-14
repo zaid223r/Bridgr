@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -13,7 +14,17 @@ import (
 // pathItems returns the two path items of a CRUD resource: /path and /path/{id}.
 func (g *schemaGen) pathItems(res resource) map[string]any {
 	model := res.model
-	ref := g.ref(model.Type)
+	// Custom types replace the model's schemas, which are then left out of
+	// the document altogether, so it never shows fields clients can't see.
+	custom := func(t reflect.Type, fallback func(reflect.Type) map[string]any) map[string]any {
+		if t != nil {
+			return g.schemaFor(t)
+		}
+		return fallback(model.Type)
+	}
+	ref := custom(res.docs.Response, g.ref)
+	createBody := custom(res.docs.CreateBody, g.inputRef)
+	updateBody := custom(res.docs.UpdateBody, g.inputRef)
 	plural := pascal(res.path)
 	singular := inflection.Singular(plural)
 	tags := []string{res.path}
@@ -59,7 +70,7 @@ func (g *schemaGen) pathItems(res resource) map[string]any {
 		"get": op("list"+plural, "List "+res.path, with(errs("400", "500"), "200", listResp),
 			map[string]any{"parameters": listParameters(g, res)}),
 		"post": op("create"+singular, "Create a "+singular, with(errs("400", "409", "413", "422", "500"), "201", jsonResponse("The created record.", ref)),
-			map[string]any{"requestBody": jsonBody(g.inputRef(model.Type))}),
+			map[string]any{"requestBody": jsonBody(createBody)}),
 	}
 
 	idParam := map[string]any{"name": "id", "in": "path", "required": true, "schema": map[string]any{"type": "string"}}
@@ -71,10 +82,10 @@ func (g *schemaGen) pathItems(res resource) map[string]any {
 		"get":        op("get"+singular, "Get a "+singular, with(errs("404", "500"), "200", jsonResponse("The record.", ref)), nil),
 		"put": op("replace"+singular, "Replace a "+singular+"; fields missing from the body are reset",
 			with(errs("400", "404", "409", "413", "422", "500"), "200", jsonResponse("The stored record.", ref)),
-			map[string]any{"requestBody": jsonBody(g.inputRef(model.Type))}),
+			map[string]any{"requestBody": jsonBody(updateBody)}),
 		"patch": op("update"+singular, "Update the fields of a "+singular+" present in the body",
 			with(errs("400", "404", "409", "413", "422", "500"), "200", jsonResponse("The stored record.", ref)),
-			map[string]any{"requestBody": jsonBody(g.inputRef(model.Type))}),
+			map[string]any{"requestBody": jsonBody(updateBody)}),
 		"delete": op("delete"+singular, "Delete a "+singular,
 			with(errs("404", "500"), "204", map[string]any{"description": "Deleted."}), nil),
 	}

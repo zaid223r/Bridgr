@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	bridgr "github.com/zaid223r/Bridgr"
+	"github.com/zaid223r/Bridgr/core/brerrors"
 	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
@@ -23,6 +24,22 @@ type Todo struct {
 	Title    string `json:"title"`
 	Done     bool   `json:"done"`
 	Priority int    `json:"priority"`
+}
+
+// NewTodo is the body of POST /todos: a new task is never done yet, so the
+// client doesn't send done or an id.
+type NewTodo struct {
+	Title    string `json:"title"`
+	Priority int    `json:"priority"`
+}
+
+// Validate rejects blank titles with a field error (422).
+func (n NewTodo) Validate() error {
+	errs := &brerrors.ValidationError{}
+	if strings.TrimSpace(n.Title) == "" {
+		errs.Add("title", "is required")
+	}
+	return errs.OrNil()
 }
 
 func main() {
@@ -74,7 +91,10 @@ func newApp(addr string) (*bridgr.App, error) {
 			"priority": bridgr.All,
 		},
 		Sort: []string{"title", "done", "priority"},
-		Validate: func(t Todo) error {
+		Create: bridgr.Input(func(_ context.Context, in NewTodo) (Todo, error) {
+			return Todo{Title: strings.TrimSpace(in.Title), Priority: in.Priority}, nil
+		}),
+		Validate: func(t Todo) error { // PUT and PATCH still send a Todo
 			if strings.TrimSpace(t.Title) == "" {
 				return errors.New("title is required")
 			}

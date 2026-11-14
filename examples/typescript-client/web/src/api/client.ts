@@ -7,4 +7,5 @@ export const api = createClient<paths>({ baseUrl: window.location.origin });
 
 export type Todo = components["schemas"]["Todo"];
 export type TodoInput = components["schemas"]["TodoInput"];
+export type NewTodo = components["schemas"]["NewTodo"];
 export type Problem = components["schemas"]["Problem"];

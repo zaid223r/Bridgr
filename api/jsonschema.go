@@ -92,26 +92,30 @@ func (g *schemaGen) schemaFor(t reflect.Type) map[string]any {
 
 // ref registers t as a component, if it isn't already, and returns a $ref to it.
 func (g *schemaGen) ref(t reflect.Type) map[string]any {
-	name, ok := g.names[t]
-	if !ok {
-		name = g.uniqueName(t)
-		g.names[t] = name
+	name := g.name(t)
+	if _, ok := g.components[name]; !ok {
 		g.components[name] = map[string]any{} // placeholder breaks recursion
 		g.components[name] = g.objectSchema(t, false)
 	}
 	return map[string]any{"$ref": "#/components/schemas/" + name}
 }
 
+// name returns t's component name, picking one on first use.
+func (g *schemaGen) name(t reflect.Type) string {
+	if name, ok := g.names[t]; ok {
+		return name
+	}
+	name := g.uniqueName(t)
+	g.names[t] = name
+	return name
+}
+
 // inputRef registers "<Name>Input", the request body of create, replace and
 // update: no property is required (missing fields are zero on create and replace,
-// unchanged on update), and a generated integer key is left out.
+// unchanged on update), and a generated integer key is left out. It doesn't
+// register "<Name>" itself.
 func (g *schemaGen) inputRef(t reflect.Type) map[string]any {
-	base := g.names[t]
-	if base == "" {
-		g.ref(t)
-		base = g.names[t]
-	}
-	name := base + "Input"
+	name := g.name(t) + "Input"
 	if _, ok := g.components[name]; !ok {
 		g.components[name] = g.objectSchema(t, true)
 	}

@@ -5,6 +5,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sync"
 
 	"github.com/zaid223r/Bridgr/core/brschema"
@@ -32,6 +33,10 @@ type CRUDDocs struct {
 	Filters []FilterDoc
 	// Sort are the fields the sort parameter accepts.
 	Sort []string
+	// CreateBody and UpdateBody replace <Model>Input as the request body of
+	// create, and of replace and update. Response replaces <Model> in every
+	// success response. Nil keeps the defaults.
+	CreateBody, UpdateBody, Response reflect.Type
 }
 
 // FilterDoc documents one filterable field of a list endpoint.

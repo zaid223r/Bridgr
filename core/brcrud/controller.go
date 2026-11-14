@@ -54,6 +54,13 @@ type Options[T any] struct {
 	// MaxLimit is the largest limit a client may ask for. Default 200.
 	MaxLimit int
 
+	// Create, Update and Response replace the record type in request and
+	// response bodies; see Input, Apply and Output. Unset, bodies are T
+	// (shaped by its readonly and writeonly tags).
+	Create   *CreateInput[T]
+	Update   *UpdateInput[T]
+	Response *Response[T]
+
 	// Hooks run business rules around writes.
 	Hooks Hooks[T]
 	// Events, if set, receives a brcap.Event after every successful create,
@@ -115,21 +122,32 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 	if limits.def > limits.max {
 		panic(fmt.Sprintf("bridgr: registering /%s: DefaultLimit %d is above MaxLimit %d", path, limits.def, limits.max))
 	}
-	if at, ok := brschema.NestedWriteOnly(model.Type); ok {
-		panic(fmt.Sprintf("bridgr: registering /%s: %s has writeonly fields, which are only hidden at the top level of a resource; drop the tag or respond with a separate type", path, at))
+	where := "bridgr: registering /" + path
+	if opts.Response != nil {
+		checkResponseType(where, opts.Response.typ)
+	} else if at, ok := brschema.NestedWriteOnly(model.Type); ok {
+		panic(fmt.Sprintf("%s: %s has writeonly fields, which are only hidden at the top level of a resource; drop the tag or set Response", where, at))
 	}
 	acc := newAccess[T](model)
-	list := resolveList("bridgr: registering /"+path, model, opts.Filters, opts.Sort, limits)
+	// view is what clients receive for a stored record.
+	view := func(v T) any { return v }
+	if opts.Response != nil {
+		view = opts.Response.view
+	}
+	list := resolveList(where, model, opts.Filters, opts.Sort, limits)
 
 	base := "/" + path
 
 	router.Docs().AddCRUD(path, model, api.CRUDDocs{
 		Auth:         opts.Auth != nil,
-		Validate:     opts.Validate != nil,
+		Validate:     opts.Validate != nil || opts.Create != nil || opts.Update != nil,
 		DefaultLimit: limits.def,
 		MaxLimit:     limits.max,
 		Filters:      list.docs(),
 		Sort:         list.sortable,
+		CreateBody:   typeOf(opts.Create),
+		UpdateBody:   typeOf(opts.Update),
+		Response:     typeOf(opts.Response),
 	})
 
 	handle := func(method, pattern string, handler http.HandlerFunc) {
@@ -159,7 +177,15 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 		w.Header().Set("X-Total-Count", strconv.FormatInt(total, 10))
 		w.Header().Set("Link", pageLinks(r.URL, q.Limit, q.Offset, total))
 		acc.hideAll(items)
-		brcontext.JSON(w, http.StatusOK, items)
+		if opts.Response == nil {
+			brcontext.JSON(w, http.StatusOK, items)
+			return
+		}
+		out := make([]any, len(items))
+		for i, v := range items {
+			out[i] = view(v)
+		}
+		brcontext.JSON(w, http.StatusOK, out)
 	})
 
 	emit := func(r *http.Request, action, id string, data any) {
@@ -189,10 +215,36 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 		emit(r, brcap.Updated, id, v)
 		return v
 	}
+	// applyUpdate serves PUT and PATCH through Options.Update.
+	applyUpdate := func(w http.ResponseWriter, r *http.Request, id string) {
+		current, err := store.Get(r.Context(), id)
+		if err != nil {
+			brerrors.WriteError(w, r, err)
+			return
+		}
+		next, ok := buildInto(w, r, func(raw json.RawMessage) (T, error) { return opts.Update.build(r.Context(), current, raw) },
+			updateHook(id), opts.Validate)
+		if !ok {
+			return
+		}
+		updated, err := store.Update(r.Context(), id, next)
+		if err != nil {
+			brerrors.WriteError(w, r, err)
+			return
+		}
+		brcontext.JSON(w, http.StatusOK, view(afterUpdate(r, id, updated)))
+	}
 
 	handle("POST", base, func(w http.ResponseWriter, r *http.Request) {
 		var zero T
-		input, ok := decodeInto(w, r, acc, zero, zero, opts.Hooks.BeforeCreate, opts.Validate)
+		var input T
+		var ok bool
+		if opts.Create != nil {
+			input, ok = buildInto(w, r, func(raw json.RawMessage) (T, error) { return opts.Create.build(r.Context(), raw) },
+				opts.Hooks.BeforeCreate, opts.Validate)
+		} else {
+			input, ok = decodeInto(w, r, acc, zero, zero, opts.Hooks.BeforeCreate, opts.Validate)
+		}
 		if !ok {
 			return
 		}
@@ -206,7 +258,7 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 		}
 		created = acc.hide(created)
 		emit(r, brcap.Created, keyOf(created), created)
-		brcontext.JSON(w, http.StatusCreated, created)
+		brcontext.JSON(w, http.StatusCreated, view(created))
 	})
 
 	handle("GET", base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -215,11 +267,15 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 			brerrors.WriteError(w, r, err)
 			return
 		}
-		brcontext.JSON(w, http.StatusOK, acc.hide(item))
+		brcontext.JSON(w, http.StatusOK, view(acc.hide(item)))
 	})
 
 	handle("PUT", base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
+		if opts.Update != nil {
+			applyUpdate(w, r, id)
+			return
+		}
 		var zero T
 		// PUT resets every field the body leaves out, except readonly ones,
 		// which keep their stored values.
@@ -241,11 +297,15 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 			brerrors.WriteError(w, r, err)
 			return
 		}
-		brcontext.JSON(w, http.StatusOK, afterUpdate(r, id, updated))
+		brcontext.JSON(w, http.StatusOK, view(afterUpdate(r, id, updated)))
 	})
 
 	handle("PATCH", base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
+		if opts.Update != nil {
+			applyUpdate(w, r, id)
+			return
+		}
 		current, err := store.Get(r.Context(), id)
 		if err != nil {
 			brerrors.WriteError(w, r, err)
@@ -262,7 +322,7 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 			brerrors.WriteError(w, r, err)
 			return
 		}
-		brcontext.JSON(w, http.StatusOK, afterUpdate(r, id, updated))
+		brcontext.JSON(w, http.StatusOK, view(afterUpdate(r, id, updated)))
 	})
 
 	handle("DELETE", base+"/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -307,9 +367,9 @@ func withAuth(auth func(*http.Request) error, next http.HandlerFunc) http.Handle
 }
 
 // decodeInto decodes the JSON body over input, so fields the body doesn't mention
-// keep their values, resets readonly fields to base's, runs the before hook,
-// then validates the result. The body must be a JSON object. On failure it
-// writes a 400, 413, 422 (or the hook's mapped error) and returns false.
+// keep their values, resets readonly fields to base's, then runs the before
+// hook and validation (see finish). The body must be a JSON object. On failure
+// it writes the error response and returns false.
 func decodeInto[T any](w http.ResponseWriter, r *http.Request, acc access[T], input, base T, before func(context.Context, *T) error, validate func(T) error) (T, bool) {
 	acc.clearReadOnly(&input)
 	raw, err := readObject(r)
@@ -318,16 +378,32 @@ func decodeInto[T any](w http.ResponseWriter, r *http.Request, acc access[T], in
 	}
 	acc.keepReadOnly(&input, base)
 	if err != nil {
-		p := brerrors.New(http.StatusBadRequest, "invalid JSON body: "+err.Error())
-		if tooBig, ok := errors.AsType[*http.MaxBytesError](err); ok {
-			p = brerrors.New(http.StatusRequestEntityTooLarge,
-				fmt.Sprintf("request body is larger than %d bytes", tooBig.Limit))
-		}
-		p.Instance = r.URL.Path
-		p.RequestID = brcontext.RequestID(r.Context())
-		brerrors.Write(w, p)
+		writeBodyError(w, r, err)
 		return input, false
 	}
+	return finish(w, r, input, before, validate)
+}
+
+// buildInto reads the body and turns it into a record with build (a custom
+// input), then runs the before hook and validation.
+func buildInto[T any](w http.ResponseWriter, r *http.Request, build func(json.RawMessage) (T, error), before func(context.Context, *T) error, validate func(T) error) (T, bool) {
+	raw, err := readObject(r)
+	if err != nil {
+		var zero T
+		writeBodyError(w, r, err)
+		return zero, false
+	}
+	input, err := build(raw)
+	if err != nil {
+		writeBuildError(w, r, err)
+		return input, false
+	}
+	return finish(w, r, input, before, validate)
+}
+
+// finish runs the before hook, then validates. Hook errors are mapped like any
+// other; validation errors respond 422.
+func finish[T any](w http.ResponseWriter, r *http.Request, input T, before func(context.Context, *T) error, validate func(T) error) (T, bool) {
 	if before != nil {
 		if err := before(r.Context(), &input); err != nil {
 			brerrors.WriteError(w, r, err)
@@ -336,17 +412,20 @@ func decodeInto[T any](w http.ResponseWriter, r *http.Request, acc access[T], in
 	}
 	if validate != nil {
 		if err := validate(input); err != nil {
-			p := brerrors.FromError(r, err)
-			if p.Status != http.StatusUnprocessableEntity {
-				p = brerrors.New(http.StatusUnprocessableEntity, err.Error())
-				p.Instance = r.URL.Path
-				p.RequestID = brcontext.RequestID(r.Context())
-			}
-			brerrors.Write(w, p)
+			writeValidation(w, r, err)
 			return input, false
 		}
 	}
 	return input, true
+}
+
+// typeOf returns the custom type carried by a Create, Update or Response
+// option, or nil when it is unset.
+func typeOf[O interface{ customType() reflect.Type }](o O) reflect.Type {
+	if reflect.ValueOf(o).IsNil() {
+		return nil
+	}
+	return o.customType()
 }
 
 // readObject reads the body and checks it is a single JSON object. A bare null
