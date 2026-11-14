@@ -6,7 +6,7 @@ validation, scheduled jobs, rate limiting, caching, events/webhooks, uploads) is
 built on the core. The goal is the quickest way to ship an API in Go: fast to write (one
 line per resource) and fast at runtime (no reflection on the hot path, no ORM).
 
-**Current focus: the core.** Modules are planned (ROADMAP Phase 8) but not started until
+**Current focus: the core.** Modules are planned (ROADMAP Phase 9) but not started until
 the core is released. Don't add module features to the core.
 
 ## Architecture rules
