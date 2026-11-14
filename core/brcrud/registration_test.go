@@ -29,13 +29,6 @@ func (nopStore[T]) Delete(context.Context, string) error { return nil }
 
 func (nopStore[T]) Count(context.Context, brstore.Query) (int64, error) { return 0, nil }
 
-type typoFilter struct {
-	ID    int    `json:"id"`
-	Title string `json:"title"`
-}
-
-func (typoFilter) FilterableFields() []string { return []string{"titel"} }
-
 type noPK struct {
 	Name string `json:"name"`
 }
@@ -59,13 +52,6 @@ func TestRegistrationFailsFast(t *testing.T) {
 		want     []string
 	}{
 		{
-			name: "unknown filterable field",
-			register: func(r *brhttp.Router) {
-				brcrud.RegisterCRUD[typoFilter](r, "typos", nopStore[typoFilter]{}, nil)
-			},
-			want: []string{"/typos", `"titel"`, "typoFilter"},
-		},
-		{
 			name: "model is not a struct",
 			register: func(r *brhttp.Router) {
 				brcrud.RegisterCRUD[string](r, "strings", nopStore[string]{}, nil)
@@ -78,13 +64,6 @@ func TestRegistrationFailsFast(t *testing.T) {
 				brcrud.RegisterCRUD[typoFixed](r, "limits", nopStore[typoFixed]{}, &brcrud.Options[typoFixed]{DefaultLimit: 500, MaxLimit: 100})
 			},
 			want: []string{"/limits", "DefaultLimit 500 is above MaxLimit 100"},
-		},
-		{
-			name: "filterable field with a reserved name",
-			register: func(r *brhttp.Router) {
-				brcrud.RegisterCRUD[reservedName](r, "reserved", nopStore[reservedName]{}, nil)
-			},
-			want: []string{"/reserved", `"sort"`, "reserved"},
 		},
 		{
 			name: "model without primary key",
@@ -126,11 +105,46 @@ type typoFixed struct {
 	Title string `json:"title"`
 }
 
-func (typoFixed) FilterableFields() []string { return []string{"title"} }
-
-type reservedName struct {
-	ID   int    `json:"id"`
-	Sort string `json:"sort"`
+type listModel struct {
+	ID       int               `json:"id"`
+	Title    string            `json:"title"`
+	Qty      int               `json:"qty"`
+	Active   bool              `json:"active"`
+	Sort     string            `json:"sort"`
+	Attrs    map[string]string `json:"attrs"`
+	Password string            `json:"password,omitzero" bridgr:"writeonly"`
 }
 
-func (reservedName) GenericFiltering() bool { return true }
+func TestListOptionsFailFast(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		filters brcrud.Filters
+		sort    []string
+		want    string
+	}{
+		{"unknown filter field", brcrud.Filters{"titel": brcrud.Exact}, nil, `Filters: "titel" is not a JSON field of listModel`},
+		{"Go name instead of JSON name", brcrud.Filters{"Title": brcrud.Exact}, nil, `"Title" is not a JSON field`},
+		{"reserved name", brcrud.Filters{"sort": brcrud.Exact}, nil, `"sort" is reserved`},
+		{"writeonly field", brcrud.Filters{"password": brcrud.Exact}, nil, `"password" is writeonly`},
+		{"unfilterable type", brcrud.Filters{"attrs": brcrud.All}, nil, "attrs has type map[string]string, which can't be filtered"},
+		{"no operators", brcrud.Filters{"qty": 0}, nil, "qty allows no operators"},
+		{"contains on a number", brcrud.Filters{"qty": brcrud.Contains}, nil, "Contains doesn't apply to qty (int); it allows eq, ne, gt, gte, lt, lte, in"},
+		{"range on a bool", brcrud.Filters{"active": brcrud.Range}, nil, "Range doesn't apply to active"},
+		{"range on a string", brcrud.Filters{"title": brcrud.Exact | brcrud.Range}, nil, "Range doesn't apply to title"},
+		{"unknown sort field", nil, []string{"qty", "nope"}, `Sort: "nope" is not a JSON field`},
+		{"unsortable type", nil, []string{"attrs"}, "Sort: attrs has type map[string]string, which can't be sorted"},
+		{"writeonly sort", nil, []string{"password"}, `Sort: "password" is writeonly`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			msg := panicMessage(func() {
+				brcrud.RegisterCRUD[listModel](brhttp.NewRouter(), "lists", nopStore[listModel]{}, &brcrud.Options[listModel]{Filters: tt.filters, Sort: tt.sort})
+			})
+			if !strings.Contains(msg, "/lists") || !strings.Contains(msg, tt.want) {
+				t.Errorf("panic = %q, want it to mention /lists and %q", msg, tt.want)
+			}
+		})
+	}
+}

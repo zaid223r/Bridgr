@@ -38,7 +38,7 @@ func TestInjectionThroughHTTP(t *testing.T) {
 		}
 	}
 	router := brhttp.NewRouter()
-	brcrud.RegisterCRUD[item](router, "items", store, nil)
+	brcrud.RegisterCRUD[item](router, "items", store, withItemList(nil))
 
 	q := func(key, value string) string { return "/items?" + url.Values{key: {value}}.Encode() }
 	tests := []struct {

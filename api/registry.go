@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/zaid223r/Bridgr/core/brschema"
+	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
 // Info is the document's info object.
@@ -27,6 +28,19 @@ type CRUDDocs struct {
 	// DefaultLimit and MaxLimit document the limit parameter.
 	DefaultLimit int
 	MaxLimit     int
+	// Filters are the filterable fields, each with the operators it allows.
+	Filters []FilterDoc
+	// Sort are the fields the sort parameter accepts.
+	Sort []string
+}
+
+// FilterDoc documents one filterable field of a list endpoint.
+type FilterDoc struct {
+	Field *brschema.Field
+	// Ops are the operators allowed in the name[op]=value form.
+	Ops []brstore.Op
+	// Plain is the operator of a plain name=value, or "" if it isn't allowed.
+	Plain brstore.Op
 }
 
 type resource struct {

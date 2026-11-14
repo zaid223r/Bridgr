@@ -34,8 +34,8 @@ func run() error {
 		DB:           bridgr.SQL(db, sqlstore.Postgres),
 		CreateTables: true, // tables "todos" and "notes"
 	})
-	bridgr.CRUD[models.Todo](app, "todos", nil)
-	bridgr.CRUD[models.Note](app, "notes", nil)
+	bridgr.CRUD[models.Todo](app, "todos", models.TodoOptions)
+	bridgr.CRUD[models.Note](app, "notes", models.NoteOptions)
 
 	return app.ListenAndServe()
 }

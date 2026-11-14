@@ -14,27 +14,27 @@ import (
 )
 
 // parseQuery turns list query parameters into a brstore.Query. Parameters must
-// name filterable fields (see brschema); values are parsed to the field's type.
+// name fields in Options.Filters, with an operator allowed there; values are
+// parsed to the field's type.
 //
-//	?title=bolt          plain string value: case-insensitive substring match
-//	?qty=3               plain value of any other type: exact match
-//	?qty=1&qty=2         repeated plain value: any of the values
-//	?qty[gte]=3          operator: eq, ne, gt, gte, lt, lte, contains, in
-//	?qty[in]=1,2,3       in takes a comma-separated list (and may repeat)
+//	?title=bolt            plain value: exact match (Exact), else substring (Contains)
+//	?qty=1&qty=2           repeated plain value: any of the values (In)
+//	?qty[gte]=3            operator: eq, ne, gt, gte, lt, lte, contains, in
+//	?qty[in]=1,2,3         in takes a comma-separated list (and may repeat)
 //	?qty[gte]=1&qty[lt]=9  several operators on one field are combined with AND
 //
-// The operators allowed per type come from brstore.OpsFor. Unknown fields,
-// unknown or unsuitable operators and unparsable values return 400 errors.
+// Unknown fields, operators the field doesn't allow and unparsable values
+// return 400 errors.
 //
 // The reserved parameters limit, offset and sort page and order the results; see
 // parsePage and parseSort.
-func parseQuery(model *brschema.Model, params url.Values, limits pageLimits) (brstore.Query, error) {
+func parseQuery(spec listSpec, params url.Values) (brstore.Query, error) {
 	var q brstore.Query
 	var err error
-	if q.Limit, q.Offset, err = parsePage(params, limits); err != nil {
+	if q.Limit, q.Offset, err = parsePage(params, spec.limits); err != nil {
 		return q, err
 	}
-	if q.Sort, err = parseSort(model, params.Get("sort")); err != nil {
+	if q.Sort, err = parseSort(spec.sortable, params.Get("sort")); err != nil {
 		return q, err
 	}
 	var invalid []string
@@ -43,7 +43,7 @@ func parseQuery(model *brschema.Model, params url.Values, limits pageLimits) (br
 			continue
 		}
 		name, opName, hasOp := splitKey(key)
-		field, ok := model.FilterField(name)
+		fs, ok := spec.filters[name]
 		if !ok {
 			if !slices.Contains(invalid, name) {
 				invalid = append(invalid, name)
@@ -53,9 +53,9 @@ func parseQuery(model *brschema.Model, params url.Values, limits pageLimits) (br
 		var f brstore.Filter
 		var err error
 		if hasOp {
-			f, err = operatorFilter(field, opName, params[key])
+			f, err = operatorFilter(fs, opName, params[key])
 		} else {
-			f, err = plainFilter(field, params[key])
+			f, err = plainFilter(fs, params[key])
 		}
 		if err != nil {
 			return q, err
@@ -78,31 +78,26 @@ func splitKey(key string) (name, op string, hasOp bool) {
 	return key[:i], key[i+1 : len(key)-1], true
 }
 
-func plainFilter(field *brschema.Field, raw []string) (brstore.Filter, error) {
-	values, err := parseValues(field, raw)
+func plainFilter(fs filterSpec, raw []string) (brstore.Filter, error) {
+	if len(raw) > 1 {
+		return operatorFilter(fs, string(brstore.In), raw)
+	}
+	if fs.plain == "" {
+		return brstore.Filter{}, opError(fs, "eq")
+	}
+	values, err := parseValues(fs.field, raw)
 	if err != nil {
 		return brstore.Filter{}, err
 	}
-	switch {
-	case len(values) > 1:
-		return brstore.Filter{Field: field.JSONName, Op: brstore.In, Value: values}, nil
-	case field.OpenAPIType == "string" && field.Format == "":
-		return brstore.Filter{Field: field.JSONName, Op: brstore.Contains, Value: values[0]}, nil
-	default:
-		return brstore.Filter{Field: field.JSONName, Op: brstore.Eq, Value: values[0]}, nil
-	}
+	return brstore.Filter{Field: fs.field.JSONName, Op: fs.plain, Value: values[0]}, nil
 }
 
-func operatorFilter(field *brschema.Field, opName string, raw []string) (brstore.Filter, error) {
-	allowed := brstore.OpsFor(field)
+func operatorFilter(fs filterSpec, opName string, raw []string) (brstore.Filter, error) {
 	op, ok := brstore.ParseOp(opName)
-	if !ok || !slices.Contains(allowed, op) {
-		names := make([]string, len(allowed))
-		for i, a := range allowed {
-			names[i] = string(a)
-		}
-		return brstore.Filter{}, &brerrors.InvalidFilterOperatorError{Field: field.JSONName, Op: opName, Allowed: names}
+	if !ok || !slices.Contains(fs.allowed, op) {
+		return brstore.Filter{}, opError(fs, opName)
 	}
+	field := fs.field
 
 	if op == brstore.In {
 		var parts []string
@@ -118,7 +113,7 @@ func operatorFilter(field *brschema.Field, opName string, raw []string) (brstore
 
 	if len(raw) > 1 {
 		return brstore.Filter{}, &brerrors.InvalidFilterValueError{
-			Field: field.JSONName, Value: strings.Join(raw, ","), Type: "a single value (use [in] for several)",
+			Field: field.JSONName, Value: strings.Join(raw, ","), Type: "a single value",
 		}
 	}
 	values, err := parseValues(field, raw)
@@ -126,6 +121,14 @@ func operatorFilter(field *brschema.Field, opName string, raw []string) (brstore
 		return brstore.Filter{}, err
 	}
 	return brstore.Filter{Field: field.JSONName, Op: op, Value: values[0]}, nil
+}
+
+func opError(fs filterSpec, op string) error {
+	names := make([]string, len(fs.allowed))
+	for i, a := range fs.allowed {
+		names[i] = string(a)
+	}
+	return &brerrors.InvalidFilterOperatorError{Field: fs.field.JSONName, Op: op, Allowed: names}
 }
 
 func parseValues(field *brschema.Field, raw []string) ([]any, error) {
@@ -181,35 +184,21 @@ func single(params url.Values, key string) (string, bool) {
 }
 
 // parseSort reads sort=-qty,title: comma-separated field names, "-" for
-// descending. Only filterable fields and the primary key can be sorted on.
-func parseSort(model *brschema.Model, raw string) ([]brstore.Sort, error) {
+// descending. Only the primary key and the fields in Options.Sort can be
+// sorted on.
+func parseSort(sortable []string, raw string) ([]brstore.Sort, error) {
 	if raw == "" {
 		return nil, nil
 	}
 	var out []brstore.Sort
 	for part := range strings.SplitSeq(raw, ",") {
 		name, desc := strings.CutPrefix(part, "-")
-		_, filterable := model.FilterField(name)
-		isPK := model.PrimaryKey != nil && model.PrimaryKey.JSONName == name
-		if !filterable && !isPK {
-			return nil, &brerrors.InvalidParamError{Param: "sort", Value: raw, Reason: fmt.Sprintf("can't sort by %q; use %s", name, strings.Join(sortable(model), ", "))}
+		if !slices.Contains(sortable, name) {
+			return nil, &brerrors.InvalidParamError{Param: "sort", Value: raw, Reason: fmt.Sprintf("can't sort by %q; use %s", name, strings.Join(sortable, ", "))}
 		}
 		out = append(out, brstore.Sort{Field: name, Desc: desc})
 	}
 	return out, nil
-}
-
-func sortable(model *brschema.Model) []string {
-	var names []string
-	if model.PrimaryKey != nil {
-		names = append(names, model.PrimaryKey.JSONName)
-	}
-	for _, f := range model.Filterable {
-		if !slices.Contains(names, f.JSONName) {
-			names = append(names, f.JSONName)
-		}
-	}
-	return names
 }
 
 // pageLinks builds an RFC 8288 Link header with first, prev, next and last pages.

@@ -7,7 +7,6 @@ import (
 
 	"github.com/jinzhu/inflection"
 
-	"github.com/zaid223r/Bridgr/core/brschema"
 	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
@@ -98,20 +97,20 @@ func listParameters(g *schemaGen, res resource) []any {
 		map[string]any{"name": "limit", "in": "query", "schema": limit, "description": "Page size."},
 		map[string]any{"name": "offset", "in": "query", "schema": map[string]any{"type": "integer", "minimum": 0, "default": 0}, "description": "Number of records to skip."},
 	}
-	if sortable := sortableFields(res.model); len(sortable) > 0 {
+	if sortable := res.docs.Sort; len(sortable) > 0 {
 		params = append(params, map[string]any{
 			"name": "sort", "in": "query", "schema": map[string]any{"type": "string"},
 			"description": "Comma-separated fields, '-' for descending, e.g. -" + sortable[len(sortable)-1] + ". Sortable: " + strings.Join(sortable, ", ") + ".",
 		})
 	}
-	for _, f := range res.model.Filterable {
-		schema := g.schemaFor(f.Type)
+	for _, fd := range res.docs.Filters {
+		schema := g.schemaFor(fd.Field.Type)
 		if t, ok := schema["type"].([]string); ok { // a filter value is never null
 			schema = clone(schema)
 			schema["type"] = t[0]
 		}
 		params = append(params, map[string]any{
-			"name": f.JSONName, "in": "query", "schema": schema, "description": filterDescription(f),
+			"name": fd.Field.JSONName, "in": "query", "schema": schema, "description": filterDescription(fd),
 		})
 	}
 	return params
@@ -125,36 +124,31 @@ func clone(s map[string]any) map[string]any {
 	return out
 }
 
-func sortableFields(model *brschema.Model) []string {
-	var names []string
-	if model.PrimaryKey != nil {
-		names = append(names, model.PrimaryKey.JSONName)
-	}
-	for _, f := range model.Filterable {
-		if !slices.Contains(names, f.JSONName) {
-			names = append(names, f.JSONName)
-		}
-	}
-	return names
-}
-
 // filterDescription explains a filter parameter and the operators it accepts, in
 // the name[op]=value form that OpenAPI can't express as separate parameters.
-func filterDescription(f *brschema.Field) string {
-	plain := "Exact match."
-	if f.OpenAPIType == "string" && f.Format == "" {
-		plain = "Case-insensitive substring match."
+func filterDescription(fd FilterDoc) string {
+	name := fd.Field.JSONName
+	var parts []string
+	switch fd.Plain {
+	case brstore.Eq:
+		parts = append(parts, "Exact match.")
+	case brstore.Contains:
+		parts = append(parts, "Case-insensitive substring match.")
+	default:
+		parts = append(parts, fmt.Sprintf("Use an operator, e.g. %s[%s].", name, fd.Ops[0]))
 	}
-	ops := brstore.OpsFor(f)
-	forms := make([]string, len(ops))
-	for i, op := range ops {
-		forms[i] = fmt.Sprintf("%s[%s]", f.JSONName, op)
+	if slices.Contains(fd.Ops, brstore.In) {
+		parts = append(parts, "Repeat to match any of several values.")
 	}
-	desc := fmt.Sprintf("%s Repeat to match any of several values. Operators: %s.", plain, strings.Join(forms, ", "))
-	if slices.Contains(ops, brstore.In) {
-		desc += fmt.Sprintf(" %s[in] takes a comma-separated list.", f.JSONName)
+	forms := make([]string, len(fd.Ops))
+	for i, op := range fd.Ops {
+		forms[i] = fmt.Sprintf("%s[%s]", name, op)
 	}
-	return desc
+	parts = append(parts, fmt.Sprintf("Operators: %s.", strings.Join(forms, ", ")))
+	if slices.Contains(fd.Ops, brstore.In) {
+		parts = append(parts, fmt.Sprintf("%s[in] takes a comma-separated list.", name))
+	}
+	return strings.Join(parts, " ")
 }
 
 var problemResponseNames = map[string]string{

@@ -41,8 +41,6 @@ type Product struct {
 	Code     string            `json:"code,omitzero" bridgr:"writeonly"`
 }
 
-func (Product) FilterableFields() []string { return []string{"name", "qty", "active", "released"} }
-
 type Sku struct {
 	Code string `json:"code" db:",pk"`
 	Qty  uint16 `json:"qty"`
@@ -62,6 +60,8 @@ func testServer(t *testing.T) (*httptest.Server, []byte) {
 	}
 	router := brhttp.NewRouter()
 	brcrud.RegisterCRUD[Product](router, "products", products, &brcrud.Options[Product]{
+		Filters: brcrud.Filters{"name": brcrud.Contains, "qty": brcrud.All, "active": brcrud.All, "released": brcrud.All},
+		Sort:    []string{"name", "qty", "active", "released"},
 		Auth: func(r *http.Request) error {
 			switch r.Header.Get("Authorization") {
 			case "Bearer admin":

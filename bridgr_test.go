@@ -22,14 +22,12 @@ type Todo struct {
 	Done  bool   `json:"done"`
 }
 
-func (Todo) GenericFiltering() bool { return true }
-
 func quiet() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
 func newApp(t *testing.T) *bridgr.App {
 	t.Helper()
 	app := bridgr.New(bridgr.Config{Title: "Todo API", Version: "2.0.0", Logger: quiet(), DB: bridgr.Memory()})
-	bridgr.CRUD[Todo](app, "todos", nil)
+	bridgr.CRUD[Todo](app, "todos", &bridgr.CRUDOptions[Todo]{Filters: bridgr.Filters{"done": bridgr.Exact}})
 	return app
 }
 

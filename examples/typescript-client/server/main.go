@@ -25,9 +25,6 @@ type Todo struct {
 	Priority int    `json:"priority"`
 }
 
-// FilterableFields lists what the client can filter and sort on.
-func (Todo) FilterableFields() []string { return []string{"title", "done", "priority"} }
-
 func main() {
 	specOut := flag.String("spec", "", "write the OpenAPI document to this file and exit")
 	addr := flag.String("addr", ":8080", "listen address")
@@ -71,6 +68,12 @@ func newApp(addr string) (*bridgr.App, error) {
 	app := bridgr.New(bridgr.Config{Addr: addr, Title: "Todo API", Version: "1.0.0"})
 	bridgr.CRUD[Todo](app, "todos", &bridgr.CRUDOptions[Todo]{
 		Store: todos, // seeded above
+		Filters: bridgr.Filters{
+			"title":    bridgr.Contains,
+			"done":     bridgr.Exact,
+			"priority": bridgr.All,
+		},
+		Sort: []string{"title", "done", "priority"},
 		Validate: func(t Todo) error {
 			if strings.TrimSpace(t.Title) == "" {
 				return errors.New("title is required")

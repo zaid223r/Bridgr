@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/zaid223r/Bridgr/core/brschema"
+	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -36,15 +37,11 @@ type Todo struct {
 	Pin        string            `json:"pin,omitzero" bridgr:"writeonly"`
 }
 
-func (Todo) FilterableFields() []string { return []string{"title", "done", "priority", "due"} }
-
 type OrderItem struct {
 	SKU string  `json:"sku" db:",pk"`
 	Qty int     `json:"qty"`
 	Net float64 `json:"net"`
 }
-
-func (OrderItem) GenericFiltering() bool { return true }
 
 func mustModel[T any](t *testing.T) *brschema.Model {
 	t.Helper()
@@ -55,11 +52,37 @@ func mustModel[T any](t *testing.T) *brschema.Model {
 	return m
 }
 
+// listDocs documents names as filterable with every operator of their type
+// (plain strings as substring matches, Contains-only for sku) and sortable.
+func listDocs(t *testing.T, m *brschema.Model, names ...string) ([]FilterDoc, []string) {
+	t.Helper()
+	var docs []FilterDoc
+	sort := []string{m.PrimaryKey.JSONName}
+	for _, name := range names {
+		f, ok := m.FieldByJSON(name)
+		if !ok {
+			t.Fatalf("no field %s", name)
+		}
+		d := FilterDoc{Field: f, Ops: brstore.OpsFor(f), Plain: brstore.Eq}
+		if name == "sku" {
+			d.Ops, d.Plain = []brstore.Op{brstore.Contains}, brstore.Contains
+		}
+		docs = append(docs, d)
+		if name != m.PrimaryKey.JSONName {
+			sort = append(sort, name)
+		}
+	}
+	return docs, sort
+}
+
 func sampleRegistry(t *testing.T) *Registry {
 	t.Helper()
 	r := NewRegistry()
-	r.AddCRUD("todos", mustModel[Todo](t), CRUDDocs{Auth: true, Validate: true, DefaultLimit: 20, MaxLimit: 100})
-	r.AddCRUD("order-items", mustModel[OrderItem](t), CRUDDocs{DefaultLimit: 50, MaxLimit: 200})
+	todo, orderItem := mustModel[Todo](t), mustModel[OrderItem](t)
+	todoFilters, todoSort := listDocs(t, todo, "done", "due", "priority", "title")
+	itemFilters, itemSort := listDocs(t, orderItem, "net", "qty", "sku")
+	r.AddCRUD("todos", todo, CRUDDocs{Auth: true, Validate: true, DefaultLimit: 20, MaxLimit: 100, Filters: todoFilters, Sort: todoSort})
+	r.AddCRUD("order-items", orderItem, CRUDDocs{DefaultLimit: 50, MaxLimit: 200, Filters: itemFilters, Sort: itemSort})
 	return r
 }
 

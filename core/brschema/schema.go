@@ -1,6 +1,6 @@
 // Package brschema reads a model struct once and caches what the rest of Bridgr
-// needs about it: JSON names, database columns, OpenAPI types, the primary key and
-// the filterable fields. Request handling uses the cached Model and never
+// needs about it: JSON names, database columns, OpenAPI types, the primary key,
+// and readonly and writeonly fields. Request handling uses the cached Model and never
 // reflects over struct fields.
 package brschema
 
@@ -64,37 +64,17 @@ type Model struct {
 	// PrimaryKey is the field tagged db:",pk" (or gorm:"primaryKey"), else the
 	// field named ID, else nil.
 	PrimaryKey *Field
-	// Filterable are the fields list endpoints may filter on, in declaration order.
-	Filterable []*Field
 	// ReadOnly and WriteOnly are the fields with those bridgr tags.
 	ReadOnly  []*Field
 	WriteOnly []*Field
 
-	byJSON     map[string]*Field
-	filterable map[string]*Field
+	byJSON map[string]*Field
 }
 
 // FieldByJSON returns the field with the given JSON name.
 func (m *Model) FieldByJSON(name string) (*Field, bool) {
 	f, ok := m.byJSON[name]
 	return f, ok
-}
-
-// FilterField returns the filterable field with the given JSON name.
-func (m *Model) FilterField(name string) (*Field, bool) {
-	f, ok := m.filterable[name]
-	return f, ok
-}
-
-// GenericFilterer is implemented by models that allow filtering on every field.
-type GenericFilterer interface {
-	GenericFiltering() bool
-}
-
-// FieldFilterer is implemented by models that allow filtering on the listed JSON
-// field names only.
-type FieldFilterer interface {
-	FilterableFields() []string
 }
 
 type cacheEntry struct {
@@ -150,31 +130,7 @@ func parse(t reflect.Type) (*Model, error) {
 	if err := m.resolveAccess(); err != nil {
 		return nil, err
 	}
-	if err := m.resolveFilterable(); err != nil {
-		return nil, err
-	}
 	return m, nil
-}
-
-func (m *Model) resolveFilterable() error {
-	m.filterable = map[string]*Field{}
-	zero := reflect.Zero(m.Type).Interface()
-
-	if g, ok := zero.(GenericFilterer); ok && g.GenericFiltering() {
-		m.Filterable = slices.Clone(m.Fields)
-	} else if ff, ok := zero.(FieldFilterer); ok {
-		for _, name := range ff.FilterableFields() {
-			f, ok := m.byJSON[name]
-			if !ok {
-				return fmt.Errorf("brschema: %s.FilterableFields: %q is not a JSON field of %s", m.Name, name, m.Name)
-			}
-			m.Filterable = append(m.Filterable, f)
-		}
-	}
-	for _, f := range m.Filterable {
-		m.filterable[f.JSONName] = f
-	}
-	return nil
 }
 
 // resolveAccess reads the bridgr tags: readonly and writeonly.

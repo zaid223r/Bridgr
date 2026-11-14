@@ -362,7 +362,7 @@
             }
           },
           {
-            "description": "Comma-separated fields, '-' for descending, e.g. -net. Sortable: sku, qty, net.",
+            "description": "Comma-separated fields, '-' for descending, e.g. -qty. Sortable: sku, net, qty.",
             "in": "query",
             "name": "sort",
             "schema": {
@@ -370,11 +370,12 @@
             }
           },
           {
-            "description": "Case-insensitive substring match. Repeat to match any of several values. Operators: sku[eq], sku[ne], sku[contains], sku[in]. sku[in] takes a comma-separated list.",
+            "description": "Exact match. Repeat to match any of several values. Operators: net[eq], net[ne], net[gt], net[gte], net[lt], net[lte], net[in]. net[in] takes a comma-separated list.",
             "in": "query",
-            "name": "sku",
+            "name": "net",
             "schema": {
-              "type": "string"
+              "format": "double",
+              "type": "number"
             }
           },
           {
@@ -387,12 +388,11 @@
             }
           },
           {
-            "description": "Exact match. Repeat to match any of several values. Operators: net[eq], net[ne], net[gt], net[gte], net[lt], net[lte], net[in]. net[in] takes a comma-separated list.",
+            "description": "Case-insensitive substring match. Operators: sku[contains].",
             "in": "query",
-            "name": "net",
+            "name": "sku",
             "schema": {
-              "format": "double",
-              "type": "number"
+              "type": "string"
             }
           }
         ],
@@ -648,7 +648,7 @@
             }
           },
           {
-            "description": "Comma-separated fields, '-' for descending, e.g. -due. Sortable: id, title, done, priority, due.",
+            "description": "Comma-separated fields, '-' for descending, e.g. -title. Sortable: id, done, due, priority, title.",
             "in": "query",
             "name": "sort",
             "schema": {
@@ -656,19 +656,20 @@
             }
           },
           {
-            "description": "Case-insensitive substring match. Repeat to match any of several values. Operators: title[eq], title[ne], title[contains], title[in]. title[in] takes a comma-separated list.",
-            "in": "query",
-            "name": "title",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Exact match. Repeat to match any of several values. Operators: done[eq], done[ne].",
+            "description": "Exact match. Operators: done[eq], done[ne].",
             "in": "query",
             "name": "done",
             "schema": {
               "type": "boolean"
+            }
+          },
+          {
+            "description": "Exact match. Repeat to match any of several values. Operators: due[eq], due[ne], due[gt], due[gte], due[lt], due[lte], due[in]. due[in] takes a comma-separated list.",
+            "in": "query",
+            "name": "due",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
             }
           },
           {
@@ -682,11 +683,10 @@
             }
           },
           {
-            "description": "Exact match. Repeat to match any of several values. Operators: due[eq], due[ne], due[gt], due[gte], due[lt], due[lte], due[in]. due[in] takes a comma-separated list.",
+            "description": "Exact match. Repeat to match any of several values. Operators: title[eq], title[ne], title[contains], title[in]. title[in] takes a comma-separated list.",
             "in": "query",
-            "name": "due",
+            "name": "title",
             "schema": {
-              "format": "date-time",
               "type": "string"
             }
           }
