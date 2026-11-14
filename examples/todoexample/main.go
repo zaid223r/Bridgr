@@ -4,7 +4,6 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"log"
 	"os"
@@ -29,27 +28,14 @@ func run() error {
 	}
 	defer db.Close()
 
-	todos, err := newStore[models.Todo](db)
-	if err != nil {
-		return err
-	}
-	notes, err := newStore[models.Note](db)
-	if err != nil {
-		return err
-	}
-
-	app := bridgr.New(bridgr.Config{Addr: ":8080", Title: "Todo and Note API"})
-	bridgr.CRUD[models.Todo](app, "todos", todos, nil)
-	bridgr.CRUD[models.Note](app, "notes", notes, nil)
+	app := bridgr.New(bridgr.Config{
+		Addr:         ":8080",
+		Title:        "Todo and Note API",
+		DB:           bridgr.SQL(db, sqlstore.Postgres),
+		CreateTables: true, // tables "todos" and "notes"
+	})
+	bridgr.CRUD[models.Todo](app, "todos", nil)
+	bridgr.CRUD[models.Note](app, "notes", nil)
 
 	return app.ListenAndServe()
-}
-
-// newStore opens a Postgres store for T and creates its table if needed.
-func newStore[T any](db *sql.DB) (*sqlstore.Store[T], error) {
-	s, err := sqlstore.New[T](db, sqlstore.Postgres)
-	if err != nil {
-		return nil, err
-	}
-	return s, s.CreateTable(context.Background())
 }

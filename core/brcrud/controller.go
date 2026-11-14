@@ -32,6 +32,10 @@ import (
 //
 // A Validate error is sent to the client as 422 with the error text as detail.
 type Options[T any] struct {
+	// Store holds the records. bridgr.CRUD uses it instead of the app's
+	// database; RegisterCRUD uses it when its store argument is nil.
+	Store brstore.Store[T]
+
 	// Middleware wraps this resource's routes; the first is the outermost.
 	// App-wide middleware (Config.Middleware) runs before it.
 	Middleware []func(http.Handler) http.Handler
@@ -65,8 +69,8 @@ type Hooks[T any] struct {
 	AfterDelete  func(ctx context.Context, id string)
 }
 
-// RegisterCRUD mounts these routes for T under /path, backed by store, and
-// documents them in the OpenAPI spec:
+// RegisterCRUD mounts these routes for T under /path, backed by store (or
+// opts.Store when store is nil), and documents them in the OpenAPI spec:
 //
 //	GET    /path       list (see parseQuery for filters, limit, offset and sort)
 //	POST   /path       create
@@ -92,6 +96,12 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 	}
 	if opts == nil {
 		opts = &Options[T]{}
+	}
+	if store == nil {
+		store = opts.Store
+	}
+	if store == nil {
+		panic(fmt.Sprintf("bridgr: registering /%s: no store", path))
 	}
 	limits := pageLimits{def: cmp.Or(opts.DefaultLimit, 50), max: cmp.Or(opts.MaxLimit, 200)}
 	if limits.def > limits.max {

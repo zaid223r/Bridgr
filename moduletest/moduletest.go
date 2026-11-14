@@ -27,7 +27,6 @@ import (
 	validator "github.com/pb33f/libopenapi-validator"
 
 	bridgr "github.com/zaid223r/Bridgr"
-	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
 // Timeout bounds each Start and Stop call.
@@ -86,12 +85,8 @@ func Check(ctx context.Context, newModule func() bridgr.Module) []error {
 		fail("Name() is not stable: %q, then %q", name, again)
 	}
 
-	widgets, err := brstore.NewMemory[Widget]()
-	if err != nil {
-		return append(problems, err)
-	}
-	app := bridgr.New(bridgr.Config{Title: "moduletest", Logger: slog.New(slog.DiscardHandler)})
-	bridgr.CRUD[Widget](app, "widgets", widgets, nil)
+	app := bridgr.New(bridgr.Config{Title: "moduletest", Logger: slog.New(slog.DiscardHandler), DB: bridgr.Memory()})
+	bridgr.CRUD[Widget](app, "widgets", nil)
 	if err := app.Use(m, probe{}); err != nil {
 		return append(problems, fmt.Errorf("registering next to a CRUD resource and another module: %w", err))
 	}
