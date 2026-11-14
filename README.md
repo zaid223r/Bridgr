@@ -16,8 +16,8 @@ type Todo struct {
 	Done  bool   `json:"done"`
 }
 
-app := bridgr.New(bridgr.Config{Addr: ":8080"})
-bridgr.CRUD[Todo](app, "todos", store, nil) // 6 endpoints + OpenAPI + docs
+app := bridgr.New(bridgr.Config{Addr: ":8080", DB: bridgr.SQL(db, sqlstore.Postgres)})
+bridgr.CRUD[Todo](app, "todos", nil) // 6 endpoints + OpenAPI + docs
 app.ListenAndServe()
 ```
 
@@ -76,6 +76,10 @@ app.ListenAndServe()
 - **Production server**: `bridgr.New(bridgr.Config{...})` sets read/write/idle timeouts, caps request
   bodies (1 MiB by default, 413 above), logs every request with `log/slog`, passes the
   request context down to the database, and shuts down gracefully on SIGINT/SIGTERM.
+- **One database for the app**: `Config.DB` (`bridgr.SQL(db, dialect)` or
+  `bridgr.Memory()`) gives every resource its own table, named after the model
+  (`Todo` → `todos`). `CRUDOptions.Store` overrides it per resource. `Config.CreateTables`
+  creates missing tables at startup for development.
 - **Storage** behind one `brstore.Store` interface with typed queries (filters, operators,
   sorting, paging) and a shared contract test suite every backend must pass. Available
   now: in-memory (`brstore.NewMemory`), and SQLite, PostgreSQL and MySQL on plain
@@ -97,7 +101,6 @@ import (
 	"log"
 
 	bridgr "github.com/zaid223r/Bridgr"
-	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
 type Todo struct {
@@ -110,13 +113,8 @@ type Todo struct {
 func (Todo) GenericFiltering() bool { return true }
 
 func main() {
-	todos, err := brstore.NewMemory[Todo]()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	app := bridgr.New(bridgr.Config{Addr: ":8080", Title: "Todo API"})
-	bridgr.CRUD[Todo](app, "todos", todos, nil)
+	app := bridgr.New(bridgr.Config{Addr: ":8080", Title: "Todo API", DB: bridgr.Memory()})
+	bridgr.CRUD[Todo](app, "todos", nil)
 
 	if err := app.ListenAndServe(); err != nil { // stops gracefully on Ctrl+C / SIGTERM
 		log.Fatal(err)
@@ -124,13 +122,15 @@ func main() {
 }
 ```
 
-To keep data in SQLite instead, swap the store:
+To keep data in SQLite instead, swap the database. Every resource gets its own table:
 
 ```go
 // import "database/sql"; _ "modernc.org/sqlite"; ".../core/brstore/sqlstore"
 db, err := sql.Open("sqlite", "file:app.db?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)")
-todos, err := sqlstore.New[Todo](db, sqlstore.SQLite) // table "todos"
-err = todos.CreateTable(ctx)                          // for prototypes; use migrations in production
+app := bridgr.New(bridgr.Config{
+	DB:           bridgr.SQL(db, sqlstore.SQLite),
+	CreateTables: true, // table "todos"; for prototypes, use migrations in production
+})
 ```
 
 For PostgreSQL, open the database with any `database/sql` driver and use the Postgres
@@ -139,7 +139,7 @@ dialect:
 ```go
 // import _ "github.com/jackc/pgx/v5/stdlib"
 db, err := sql.Open("pgx", os.Getenv("DATABASE_URL"))
-todos, err := sqlstore.New[Todo](db, sqlstore.Postgres)
+app := bridgr.New(bridgr.Config{DB: bridgr.SQL(db, sqlstore.Postgres)})
 ```
 
 [examples/todoexample](examples/todoexample) is a complete Postgres example.
@@ -149,8 +149,11 @@ For MySQL 8, use `github.com/go-sql-driver/mysql` with `parseTime=true` in the D
 ```go
 // import _ "github.com/go-sql-driver/mysql"; ".../core/brstore/sqlstore/mysql"
 db, err := sql.Open("mysql", "user:pass@tcp(localhost:3306)/app?parseTime=true")
-todos, err := sqlstore.New[Todo](db, mysql.Dialect)
+app := bridgr.New(bridgr.Config{DB: bridgr.SQL(db, mysql.Dialect)})
 ```
+
+A resource can also bring its own store, e.g. one seeded with data or a custom table
+name: `bridgr.CRUD[Todo](app, "todos", &bridgr.CRUDOptions[Todo]{Store: todos})`.
 
 Then try:
 

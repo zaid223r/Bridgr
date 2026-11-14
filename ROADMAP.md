@@ -95,7 +95,7 @@ operators and pagination are built once, on the Store path only, instead of also
 The core stays small: struct → endpoints, storage, OpenAPI, and the hooks modules need to
 plug in. Modules (Phase 9) are built only on these public hooks.
 
-- [x] **`feat/app`**: one entry point, `bridgr.New(cfg)` → `bridgr.CRUD[T](app, "todos", store, opts)` → `app.Run()`
+- [x] **`feat/app`**: one entry point, `bridgr.New(cfg)` → `bridgr.CRUD[T](app, "todos", opts)` → `app.Run()`
   - [x] root package `bridgr` wraps router, server and docs; existing packages keep working
 - [x] **`feat/modules`**: the module contract every add-on uses
   - [x] `Module` interface: register routes, middleware and OpenAPI additions; `Start`/`Stop` for background work
@@ -136,7 +136,7 @@ type Post struct {
 }
 
 // main.go
-app := bridgr.New(bridgr.Config{DB: bridgr.Postgres(os.Getenv("DATABASE_URL"))})
+app := bridgr.New(bridgr.Config{DB: bridgr.SQL(db, sqlstore.Postgres)})
 bridgr.CRUD[User](app, "users", nil)
 bridgr.CRUD[Post](app, "posts", &bridgr.CRUDOptions[Post]{
 	Filters: bridgr.Filters{"user_id": bridgr.Exact, "title": bridgr.Exact | bridgr.Contains},
@@ -152,10 +152,10 @@ declared on the model, with no ORM and no lazy loading; anything that writes sev
 runs in a transaction. Relations and includes use only `brstore.Store` (an `in` filter), so
 they work on every backend, NoSQL included.
 
-- [ ] **`feat/app-db`**: register storage once
-  - [ ] `Config.DB` with `bridgr.SQLite`, `bridgr.Postgres`, `bridgr.MySQL`, `bridgr.Memory`
-  - [ ] `bridgr.CRUD[T](app, path, opts)` builds the store from the app's database; `Options.Store` overrides it
-  - [ ] opt-in table creation at startup for development
+- [x] **`feat/app-db`**: register storage once
+  - [x] `Config.DB` with `bridgr.SQL(db, dialect)` (SQLite, Postgres, MySQL) and `bridgr.Memory()`; the app opens no connections itself, so drivers stay the caller's choice
+  - [x] `bridgr.CRUD[T](app, path, opts)` builds the store from the app's database; `Options.Store` overrides it
+  - [x] opt-in table creation at startup for development (`Config.CreateTables`, `app.CreateTables`)
 - [ ] **`feat/field-tags`**: shape requests and responses with tags
   - [ ] `bridgr:"readonly"` (ignored on input, e.g. ids and timestamps), `bridgr:"writeonly"` (accepted, never returned, e.g. passwords)
   - [ ] reflected in the OpenAPI `<Model>` and `<Model>Input` schemas (`readOnly` / `writeOnly`)
@@ -187,7 +187,7 @@ they work on every backend, NoSQL included.
 
 ## Phase 7: NoSQL
 
-- [ ] **`feat/mongostore`**: MongoDB adapter as a separate module, passes the contract suite (transactions included, on a replica set)
+- [ ] **`feat/mongostore`**: MongoDB adapter as a separate module, passes the contract suite (transactions included, on a replica set); opens `Config.DB` to backends outside the core
 - [ ] **`feat/mongo-filters`**: filter operators, pagination and ObjectID support on MongoDB
 
 ## Phase 8: Core release

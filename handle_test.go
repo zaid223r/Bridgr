@@ -64,7 +64,7 @@ func typedApp(t *testing.T) *bridgr.App {
 		}
 	}
 	app := bridgr.New(bridgr.Config{Title: "Typed", Logger: quiet()})
-	bridgr.CRUD[Todo](app, "todos", store, nil)
+	bridgr.CRUD[Todo](app, "todos", &bridgr.CRUDOptions[Todo]{Store: store})
 
 	bridgr.Handle(app, "POST", "/todos/{id}/archive", func(ctx context.Context, in ArchiveIn) (ArchiveOut, error) {
 		todo, err := store.Get(ctx, fmt.Sprint(in.ID))

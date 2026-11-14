@@ -69,7 +69,8 @@ func newApp(addr string) (*bridgr.App, error) {
 	}
 
 	app := bridgr.New(bridgr.Config{Addr: addr, Title: "Todo API", Version: "1.0.0"})
-	bridgr.CRUD[Todo](app, "todos", todos, &bridgr.CRUDOptions[Todo]{
+	bridgr.CRUD[Todo](app, "todos", &bridgr.CRUDOptions[Todo]{
+		Store: todos, // seeded above
 		Validate: func(t Todo) error {
 			if strings.TrimSpace(t.Title) == "" {
 				return errors.New("title is required")

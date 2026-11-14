@@ -14,7 +14,6 @@ import (
 	"time"
 
 	bridgr "github.com/zaid223r/Bridgr"
-	"github.com/zaid223r/Bridgr/core/brstore"
 )
 
 type Todo struct {
@@ -29,12 +28,8 @@ func quiet() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
 func newApp(t *testing.T) *bridgr.App {
 	t.Helper()
-	store, err := brstore.NewMemory[Todo]()
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := bridgr.New(bridgr.Config{Title: "Todo API", Version: "2.0.0", Logger: quiet()})
-	bridgr.CRUD[Todo](app, "todos", store, nil)
+	app := bridgr.New(bridgr.Config{Title: "Todo API", Version: "2.0.0", Logger: quiet(), DB: bridgr.Memory()})
+	bridgr.CRUD[Todo](app, "todos", nil)
 	return app
 }
 
@@ -90,7 +85,6 @@ func TestRegisteringAfterStartPanics(t *testing.T) {
 	t.Parallel()
 	app := newApp(t)
 	_ = app.Handler()
-	store, _ := brstore.NewMemory[Todo]()
 
 	defer func() {
 		r := recover()
@@ -98,7 +92,7 @@ func TestRegisteringAfterStartPanics(t *testing.T) {
 			t.Errorf("recover() = %v, want a clear panic", r)
 		}
 	}()
-	bridgr.CRUD[Todo](app, "late", store, nil)
+	bridgr.CRUD[Todo](app, "late", nil)
 }
 
 func TestHandlerIsBuiltOnce(t *testing.T) {
@@ -165,8 +159,7 @@ func TestOpenAPIWithoutStarting(t *testing.T) {
 	if !strings.Contains(string(doc), `"title": "Todo API"`) || !strings.Contains(string(doc), `"/todos/{id}"`) {
 		t.Errorf("document missing title or paths")
 	}
-	store, _ := brstore.NewMemory[Todo]()
-	bridgr.CRUD[Todo](app, "still-open", store, nil) // OpenAPI must not freeze registration
+	bridgr.CRUD[Todo](app, "still-open", nil) // OpenAPI must not freeze registration
 }
 
 func TestAddMiddleware(t *testing.T) {
