@@ -37,8 +37,19 @@ type Field struct {
 	OmitEmpty bool
 	// PrimaryKey is true for the model's primary key field.
 	PrimaryKey bool
+	// ReadOnly fields (bridgr:"readonly") are returned, but CRUD endpoints
+	// ignore them in request bodies: ids, timestamps, values set by hooks. On
+	// replace and update they keep their stored values.
+	ReadOnly bool
+	// WriteOnly fields (bridgr:"writeonly") are accepted in request bodies but
+	// left out of CRUD and typed-handler responses and of resource events,
+	// e.g. a password a hook hashes. The json tag must have omitzero or
+	// omitempty.
+	WriteOnly bool
 
 	taggedPK bool
+	// viaPointer is true when the field is reached through an embedded pointer.
+	viaPointer bool
 }
 
 // Model is the cached description of a struct type. It is immutable and safe for
@@ -55,6 +66,9 @@ type Model struct {
 	PrimaryKey *Field
 	// Filterable are the fields list endpoints may filter on, in declaration order.
 	Filterable []*Field
+	// ReadOnly and WriteOnly are the fields with those bridgr tags.
+	ReadOnly  []*Field
+	WriteOnly []*Field
 
 	byJSON     map[string]*Field
 	filterable map[string]*Field
@@ -133,6 +147,9 @@ func parse(t reflect.Type) (*Model, error) {
 	if m.PrimaryKey != nil {
 		m.PrimaryKey.PrimaryKey = true
 	}
+	if err := m.resolveAccess(); err != nil {
+		return nil, err
+	}
 	if err := m.resolveFilterable(); err != nil {
 		return nil, err
 	}
@@ -160,6 +177,89 @@ func (m *Model) resolveFilterable() error {
 	return nil
 }
 
+// resolveAccess reads the bridgr tags: readonly and writeonly.
+func (m *Model) resolveAccess() error {
+	for _, f := range m.Fields {
+		sf := m.Type.FieldByIndex(f.Index)
+		tag, ok := sf.Tag.Lookup("bridgr")
+		if !ok {
+			continue
+		}
+		for opt := range strings.SplitSeq(tag, ",") {
+			switch strings.TrimSpace(opt) {
+			case "readonly":
+				f.ReadOnly = true
+			case "writeonly":
+				f.WriteOnly = true
+			case "":
+			default:
+				return fmt.Errorf("brschema: %s.%s: unknown bridgr tag option %q (want readonly or writeonly)", m.Name, f.GoName, opt)
+			}
+		}
+		where := m.Name + "." + f.GoName
+		switch {
+		case f.ReadOnly && f.WriteOnly:
+			return fmt.Errorf("brschema: %s can't be both readonly and writeonly", where)
+		case (f.ReadOnly || f.WriteOnly) && f.viaPointer:
+			return fmt.Errorf("brschema: %s: readonly and writeonly aren't supported on fields of an embedded pointer struct", where)
+		case f.WriteOnly && f.PrimaryKey:
+			return fmt.Errorf("brschema: %s is the primary key, so it can't be writeonly", where)
+		case f.WriteOnly && !f.OmitEmpty:
+			return fmt.Errorf("brschema: %s is writeonly, so its json tag needs omitzero (or omitempty) to leave it out of responses", where)
+		}
+		if f.ReadOnly {
+			m.ReadOnly = append(m.ReadOnly, f)
+		}
+		if f.WriteOnly {
+			m.WriteOnly = append(m.WriteOnly, f)
+		}
+	}
+	return nil
+}
+
+// NestedWriteOnly reports the first struct nested inside t (through fields,
+// pointers, slices, arrays and maps) that has writeonly fields, as a path like
+// "Post.Author". t itself, and the element of a top-level slice or pointer, are
+// not reported: Bridgr hides those fields when it writes such values. Nested
+// ones would be encoded as is, so registration rejects them.
+func NestedWriteOnly(t reflect.Type) (string, bool) {
+	for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice || t.Kind() == reflect.Array {
+		t = t.Elem()
+	}
+	if t.Kind() != reflect.Struct {
+		return "", false
+	}
+	return nestedWriteOnly(t, t.Name(), map[reflect.Type]bool{})
+}
+
+func nestedWriteOnly(t reflect.Type, path string, seen map[reflect.Type]bool) (string, bool) {
+	if seen[t] {
+		return "", false
+	}
+	seen[t] = true
+	m, err := For(t)
+	if err != nil {
+		return "", false
+	}
+	for _, f := range m.Fields {
+		ft := f.Type
+		for ft.Kind() == reflect.Pointer || ft.Kind() == reflect.Slice || ft.Kind() == reflect.Array || ft.Kind() == reflect.Map {
+			ft = ft.Elem()
+		}
+		if ft.Kind() != reflect.Struct || ft == timeType {
+			continue
+		}
+		at := path + "." + f.GoName
+		if nm, err := For(ft); err == nil && len(nm.WriteOnly) > 0 {
+			return at, true
+		}
+		if p, ok := nestedWriteOnly(ft, at, seen); ok {
+			return p, true
+		}
+	}
+	return "", false
+}
+
 // candidate is a field found while walking embedded structs, before name
 // conflicts between depths are resolved.
 type candidate struct {
@@ -173,8 +273,8 @@ type candidate struct {
 // and at equal depth a single json-tagged field wins, otherwise all are dropped.
 func jsonFields(t reflect.Type) []*Field {
 	var found []candidate
-	var walk func(t reflect.Type, index []int, depth int, seen map[reflect.Type]bool)
-	walk = func(t reflect.Type, index []int, depth int, seen map[reflect.Type]bool) {
+	var walk func(t reflect.Type, index []int, depth int, viaPtr bool, seen map[reflect.Type]bool)
+	walk = func(t reflect.Type, index []int, depth int, viaPtr bool, seen map[reflect.Type]bool) {
 		if seen[t] {
 			return
 		}
@@ -195,20 +295,22 @@ func jsonFields(t reflect.Type) []*Field {
 				ft = ft.Elem()
 			}
 			if sf.Anonymous && name == "" && ft.Kind() == reflect.Struct {
-				walk(ft, idx, depth+1, seen)
+				walk(ft, idx, depth+1, viaPtr || sf.Type.Kind() == reflect.Pointer, seen)
 				continue
 			}
 			if !sf.IsExported() {
 				continue
 			}
+			field := newField(sf, idx, name, opts)
+			field.viaPointer = viaPtr
 			found = append(found, candidate{
-				field:  newField(sf, idx, name, opts),
+				field:  field,
 				depth:  depth,
 				tagged: name != "",
 			})
 		}
 	}
-	walk(t, nil, 0, map[reflect.Type]bool{})
+	walk(t, nil, 0, false, map[reflect.Type]bool{})
 
 	byName := map[string][]candidate{}
 	var order []string

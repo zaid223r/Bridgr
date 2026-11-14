@@ -482,3 +482,101 @@ func BenchmarkFilterFieldLookup(b *testing.B) {
 		_, _ = m.FilterField("user_id")
 	}
 }
+
+type Access struct {
+	ID        int64     `json:"id" bridgr:"readonly"`
+	Password  string    `json:"password,omitzero" bridgr:"writeonly"`
+	CreatedAt time.Time `json:"created_at" bridgr:" readonly ,"`
+	Name      string    `json:"name" bridgr:""`
+}
+
+func TestAccessTags(t *testing.T) {
+	t.Parallel()
+	m := mustOf[Access](t)
+	if got := jsonNames(m.ReadOnly); !slices.Equal(got, []string{"id", "created_at"}) {
+		t.Errorf("ReadOnly = %v", got)
+	}
+	if got := jsonNames(m.WriteOnly); !slices.Equal(got, []string{"password"}) {
+		t.Errorf("WriteOnly = %v", got)
+	}
+	if f, _ := m.FieldByJSON("name"); f.ReadOnly || f.WriteOnly {
+		t.Errorf("name = %+v, want no access flags", f)
+	}
+}
+
+type pointerBase struct {
+	Secret string `json:"secret,omitzero" bridgr:"writeonly"`
+}
+
+func TestAccessTagErrors(t *testing.T) {
+	t.Parallel()
+	type unknown struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name" bridgr:"hidden"`
+	}
+	type both struct {
+		ID   int64  `json:"id"`
+		Name string `json:"name,omitzero" bridgr:"readonly,writeonly"`
+	}
+	type viaPointer struct {
+		ID int64 `json:"id"`
+		*pointerBase
+	}
+	type writeOnlyKey struct {
+		ID int64 `json:"id,omitzero" bridgr:"writeonly"`
+	}
+	type alwaysEncoded struct {
+		ID       int64  `json:"id"`
+		Password string `json:"password" bridgr:"writeonly"`
+	}
+	tests := []struct {
+		name string
+		typ  reflect.Type
+		want string
+	}{
+		{"unknown option", reflect.TypeFor[unknown](), `unknown bridgr tag option "hidden"`},
+		{"readonly and writeonly", reflect.TypeFor[both](), "both readonly and writeonly"},
+		{"embedded pointer", reflect.TypeFor[viaPointer](), "embedded pointer struct"},
+		{"writeonly key", reflect.TypeFor[writeOnlyKey](), "primary key, so it can't be writeonly"},
+		{"writeonly without omitzero", reflect.TypeFor[alwaysEncoded](), "needs omitzero"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if _, err := brschema.For(tt.typ); err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("For = %v, want an error containing %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestNestedWriteOnly(t *testing.T) {
+	t.Parallel()
+	type node struct {
+		Next *node `json:"next"`
+	}
+	type deep struct {
+		Inner struct {
+			Users map[string][]*Access `json:"users"`
+		} `json:"inner"`
+	}
+	tests := []struct {
+		typ  reflect.Type
+		want string
+	}{
+		{reflect.TypeFor[Access](), ""},
+		{reflect.TypeFor[[]*Access](), ""},
+		{reflect.TypeFor[node](), ""},
+		{reflect.TypeFor[Todo](), ""},
+		{reflect.TypeFor[struct {
+			Owner Access `json:"owner"`
+		}](), ".Owner"},
+		{reflect.TypeFor[[]deep](), "deep.Inner.Users"},
+	}
+	for _, tt := range tests {
+		got, ok := brschema.NestedWriteOnly(tt.typ)
+		if got != tt.want || ok != (tt.want != "") {
+			t.Errorf("NestedWriteOnly(%s) = %q, %v; want %q", tt.typ, got, ok, tt.want)
+		}
+	}
+}

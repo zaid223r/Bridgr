@@ -180,6 +180,11 @@
       "Todo": {
         "properties": {
           "attachment": {},
+          "created_at": {
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
           "done": {
             "type": "boolean"
           },
@@ -244,7 +249,8 @@
           "meta",
           "owner",
           "reviewer",
-          "attachment"
+          "attachment",
+          "created_at"
         ],
         "type": "object"
       },
@@ -272,6 +278,10 @@
           },
           "owner": {
             "$ref": "#/components/schemas/User"
+          },
+          "pin": {
+            "type": "string",
+            "writeOnly": true
           },
           "priority": {
             "format": "int32",
