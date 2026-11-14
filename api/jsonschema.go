@@ -121,7 +121,9 @@ func (g *schemaGen) inputRef(t reflect.Type) map[string]any {
 // objectSchema describes a struct using brschema's field list, so the schema
 // matches what encoding/json writes (embedded structs flattened, json:"-"
 // skipped). In responses, fields without omitempty are always present, hence
-// required; input schemas require nothing and drop generated integer keys.
+// required, writeonly fields are left out and the key and readonly fields are
+// marked readOnly. Input schemas require nothing, drop readonly fields and
+// generated integer keys, and mark writeonly fields writeOnly.
 func (g *schemaGen) objectSchema(t reflect.Type, input bool) map[string]any {
 	model, err := brschema.For(t)
 	if err != nil {
@@ -130,12 +132,18 @@ func (g *schemaGen) objectSchema(t reflect.Type, input bool) map[string]any {
 	props := map[string]any{}
 	required := []string{}
 	for _, f := range model.Fields {
-		if input && f.PrimaryKey && f.OpenAPIType == "integer" {
+		switch {
+		case input && f.ReadOnly,
+			input && f.PrimaryKey && f.OpenAPIType == "integer",
+			!input && f.WriteOnly:
 			continue
 		}
 		s := g.schemaFor(f.Type)
-		if f.PrimaryKey && !input {
-			s = withReadOnly(s)
+		switch {
+		case !input && (f.PrimaryKey || f.ReadOnly):
+			s = withFlag(s, "readOnly")
+		case input && f.WriteOnly:
+			s = withFlag(s, "writeOnly")
 		}
 		props[f.JSONName] = s
 		if !f.OmitEmpty && !input {
@@ -149,8 +157,9 @@ func (g *schemaGen) objectSchema(t reflect.Type, input bool) map[string]any {
 	return s
 }
 
-func withReadOnly(s map[string]any) map[string]any {
-	out := map[string]any{"readOnly": true}
+// withFlag returns s with a boolean keyword such as readOnly set.
+func withFlag(s map[string]any, flag string) map[string]any {
+	out := map[string]any{flag: true}
 	if _, isRef := s["$ref"]; isRef {
 		out["allOf"] = []any{s}
 		return out

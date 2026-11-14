@@ -114,6 +114,10 @@ func Handle[In, Out any](a *App, method, path string, fn func(ctx context.Contex
 
 	outT := reflect.TypeFor[Out]()
 	noContent := outT == reflect.TypeFor[NoContent]()
+	if at, ok := brschema.NestedWriteOnly(outT); ok {
+		panic(fmt.Sprintf("bridgr.Handle %s: %s has writeonly fields, which are only hidden at the top level of a response; drop the tag or respond with a separate type", where, at))
+	}
+	hide := writeOnlyHider(outT)
 	status := cfg.status
 	if status == 0 {
 		status = http.StatusOK
@@ -176,6 +180,10 @@ func Handle[In, Out any](a *App, method, path string, fn func(ctx context.Contex
 		}
 		if noContent {
 			w.WriteHeader(status)
+			return
+		}
+		if hide != nil {
+			brcontext.JSON(w, status, hide(reflect.ValueOf(out)).Interface())
 			return
 		}
 		brcontext.JSON(w, status, out)
@@ -402,4 +410,56 @@ func defaultOperationID(method, path string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// writeOnlyHider returns a function that copies a value of type t without the
+// writeonly fields of its model, for t = T, *T, []T or []*T, or nil when t has
+// none. It copies so that the handler's value, which may be shared, is never
+// changed.
+func writeOnlyHider(t reflect.Type) func(reflect.Value) reflect.Value {
+	switch t.Kind() {
+	case reflect.Struct:
+		m, err := brschema.For(t)
+		if err != nil || len(m.WriteOnly) == 0 {
+			return nil
+		}
+		return func(v reflect.Value) reflect.Value {
+			c := reflect.New(t).Elem()
+			c.Set(v)
+			for _, f := range m.WriteOnly {
+				c.FieldByIndex(f.Index).SetZero()
+			}
+			return c
+		}
+	case reflect.Pointer:
+		elem := writeOnlyHider(t.Elem())
+		if elem == nil {
+			return nil
+		}
+		return func(v reflect.Value) reflect.Value {
+			if v.IsNil() {
+				return v
+			}
+			p := reflect.New(t.Elem())
+			p.Elem().Set(elem(v.Elem()))
+			return p
+		}
+	case reflect.Slice:
+		elem := writeOnlyHider(t.Elem())
+		if elem == nil {
+			return nil
+		}
+		return func(v reflect.Value) reflect.Value {
+			if v.IsNil() {
+				return v
+			}
+			c := reflect.MakeSlice(t, v.Len(), v.Len())
+			for i := range v.Len() {
+				c.Index(i).Set(elem(v.Index(i)))
+			}
+			return c
+		}
+	default:
+		return nil
+	}
 }

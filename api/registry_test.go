@@ -32,6 +32,8 @@ type Todo struct {
 	Reviewer   *User             `json:"reviewer"`
 	Attachment json.RawMessage   `json:"attachment"`
 	Secret     string            `json:"-"`
+	CreatedAt  time.Time         `json:"created_at" bridgr:"readonly"`
+	Pin        string            `json:"pin,omitzero" bridgr:"writeonly"`
 }
 
 func (Todo) FilterableFields() []string { return []string{"title", "done", "priority", "due"} }
@@ -201,12 +203,39 @@ func TestInputSchemas(t *testing.T) {
 	if _, ok := skuIn.Properties["sku"]; !ok {
 		t.Error("OrderItemInput must keep the client-chosen string key")
 	}
-	if want := []string{"id", "title", "done", "priority", "tags", "meta", "owner", "reviewer", "attachment"}; !slices.Equal(todo.Required, want) {
+	if want := []string{"id", "title", "done", "priority", "tags", "meta", "owner", "reviewer", "attachment", "created_at"}; !slices.Equal(todo.Required, want) {
 		t.Errorf("Todo required = %v, want %v (omitempty fields excluded)", todo.Required, want)
 	}
 	if _, ok := todo.Properties["secret"]; ok {
 		t.Error(`json:"-" field documented`)
 	}
+
+	for _, tt := range []struct {
+		schema   map[string]json.RawMessage
+		name     string
+		field    string
+		want     string // "" means the field is left out
+		describe string
+	}{
+		{todo.Properties, "Todo", "created_at", `{"format":"date-time","readOnly":true,"type":"string"}`, "readonly fields are returned and marked readOnly"},
+		{todo.Properties, "Todo", "pin", "", "writeonly fields are never returned"},
+		{todoIn.Properties, "TodoInput", "created_at", "", "readonly fields can't be sent"},
+		{todoIn.Properties, "TodoInput", "pin", `{"type":"string","writeOnly":true}`, "writeonly fields are accepted and marked writeOnly"},
+	} {
+		got, ok := tt.schema[tt.field]
+		if tt.want == "" && ok || tt.want != "" && string(compact(t, got)) != tt.want {
+			t.Errorf("%s.%s = %s: %s", tt.name, tt.field, got, tt.describe)
+		}
+	}
+}
+
+func compact(t *testing.T, raw json.RawMessage) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	if err := json.Compact(&b, raw); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
 }
 
 func TestSchemaFor(t *testing.T) {

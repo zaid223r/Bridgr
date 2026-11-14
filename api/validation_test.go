@@ -37,6 +37,8 @@ type Product struct {
 	Released *time.Time        `json:"released,omitempty"`
 	Owner    Owner             `json:"owner"`
 	Backup   *Owner            `json:"backup"`
+	Rank     int               `json:"rank" bridgr:"readonly"`
+	Code     string            `json:"code,omitzero" bridgr:"writeonly"`
 }
 
 func (Product) FilterableFields() []string { return []string{"name", "qty", "active", "released"} }
@@ -145,7 +147,7 @@ func TestResponsesMatchSpec(t *testing.T) {
 
 	big := `{"name":"` + strings.Repeat("x", 600) + `"}`
 	steps := []exchange{
-		{"create product", "POST", "/products", `{"name":"Bolt","qty":3,"active":true,"price":1.5,"tags":["a"],"attrs":{"k":"v"},"owner":{"name":"Zaid"}}`, "admin", 201, true},
+		{"create product", "POST", "/products", `{"name":"Bolt","qty":3,"active":true,"price":1.5,"tags":["a"],"attrs":{"k":"v"},"owner":{"name":"Zaid"},"code":"s3cret"}`, "admin", 201, true},
 		{"create second product", "POST", "/products", `{"name":"Nut","released":"2026-01-02T03:04:05Z","backup":{"name":"B","email":"b@x.io"}}`, "admin", 201, true},
 		{"list", "GET", "/products", "", "admin", 200, true},
 		{"list with paging and sort", "GET", "/products?limit=1&offset=1&sort=-qty", "", "admin", 200, true},

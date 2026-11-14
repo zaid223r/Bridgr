@@ -89,6 +89,22 @@ app.ListenAndServe()
   the database column and primary key (default: snake_case of the field name, and the
   field named `ID`). GORM's `column` and `primaryKey` tags are also read, so GORM models
   work unchanged.
+  - `bridgr:"readonly"`: returned, but never taken from a request body. Use it for
+    timestamps, owners and anything hooks fill in. PUT and PATCH keep the stored value.
+  - `bridgr:"writeonly"`: accepted in request bodies, never returned (needs `omitzero`).
+    Use it for passwords, which a `BeforeCreate` hook can hash.
+
+  ```go
+  type User struct {
+  	ID        int64     `json:"id"`
+  	Email     string    `json:"email"`
+  	Password  string    `json:"password,omitzero" bridgr:"writeonly"`
+  	CreatedAt time.Time `json:"created_at" bridgr:"readonly"`
+  }
+  ```
+
+  OpenAPI follows: `User` marks `created_at` `readOnly` and has no `password`;
+  `UserInput` has `password` (`writeOnly`) and no `created_at`.
 
 ## Quick start
 

@@ -156,9 +156,10 @@ they work on every backend, NoSQL included.
   - [x] `Config.DB` with `bridgr.SQL(db, dialect)` (SQLite, Postgres, MySQL) and `bridgr.Memory()`; the app opens no connections itself, so drivers stay the caller's choice
   - [x] `bridgr.CRUD[T](app, path, opts)` builds the store from the app's database; `Options.Store` overrides it
   - [x] opt-in table creation at startup for development (`Config.CreateTables`, `app.CreateTables`)
-- [ ] **`feat/field-tags`**: shape requests and responses with tags
-  - [ ] `bridgr:"readonly"` (ignored on input, e.g. ids and timestamps), `bridgr:"writeonly"` (accepted, never returned, e.g. passwords)
-  - [ ] reflected in the OpenAPI `<Model>` and `<Model>Input` schemas (`readOnly` / `writeOnly`)
+- [x] **`feat/field-tags`**: shape requests and responses with tags
+  - [x] `bridgr:"readonly"` (ignored on input, e.g. ids and timestamps), `bridgr:"writeonly"` (accepted, never returned, e.g. passwords)
+  - [x] reflected in the OpenAPI `<Model>` and `<Model>Input` schemas (`readOnly` / `writeOnly`)
+  - [x] writeonly fields also hidden from typed-handler responses and events; nested ones are rejected at startup
 - [ ] **`feat/filter-config`**: per-field filter and sort control, deny by default
   - [ ] `Options.Filters` maps a field to its allowed operators (`Exact`, `Contains`, `Range`, `In`, ...); `Options.Sort` lists sortable fields
   - [ ] other fields and operators get a 400; replaces `FilterableFields` and `GenericFiltering`
