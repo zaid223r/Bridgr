@@ -222,15 +222,7 @@
             }
           },
           {
-            "description": "Case-insensitive substring match. Repeat to match any of several values. Operators: title[eq], title[ne], title[contains], title[in]. title[in] takes a comma-separated list.",
-            "in": "query",
-            "name": "title",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "Exact match. Repeat to match any of several values. Operators: done[eq], done[ne].",
+            "description": "Exact match. Operators: done[eq].",
             "in": "query",
             "name": "done",
             "schema": {
@@ -244,6 +236,14 @@
             "schema": {
               "format": "int64",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Case-insensitive substring match. Operators: title[contains].",
+            "in": "query",
+            "name": "title",
+            "schema": {
+              "type": "string"
             }
           }
         ],

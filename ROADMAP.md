@@ -160,10 +160,10 @@ they work on every backend, NoSQL included.
   - [x] `bridgr:"readonly"` (ignored on input, e.g. ids and timestamps), `bridgr:"writeonly"` (accepted, never returned, e.g. passwords)
   - [x] reflected in the OpenAPI `<Model>` and `<Model>Input` schemas (`readOnly` / `writeOnly`)
   - [x] writeonly fields also hidden from typed-handler responses and events; nested ones are rejected at startup
-- [ ] **`feat/filter-config`**: per-field filter and sort control, deny by default
-  - [ ] `Options.Filters` maps a field to its allowed operators (`Exact`, `Contains`, `Range`, `In`, ...); `Options.Sort` lists sortable fields
-  - [ ] other fields and operators get a 400; replaces `FilterableFields` and `GenericFiltering`
-  - [ ] OpenAPI documents only the allowed parameters and operators
+- [x] **`feat/filter-config`**: per-field filter and sort control, deny by default
+  - [x] `Options.Filters` maps a field to its allowed operators (`Exact`, `Contains`, `Range`, `In`, ...); `Options.Sort` lists sortable fields
+  - [x] other fields and operators get a 400; replaces `FilterableFields` and `GenericFiltering`
+  - [x] OpenAPI documents only the allowed parameters and operators
 - [ ] **`feat/typed-io`**: custom request and response types per resource
   - [ ] `Options.Create`, `Options.Update` (`bridgr.Input(func(In) (T, error))`) and `Options.Response` (`bridgr.Output(func(T) Out)`)
   - [ ] OpenAPI uses the custom types; the TypeScript example shows one

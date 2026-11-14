@@ -173,12 +173,12 @@ export interface operations {
                 offset?: number;
                 /** @description Comma-separated fields, '-' for descending, e.g. -priority. Sortable: id, title, done, priority. */
                 sort?: string;
-                /** @description Case-insensitive substring match. Repeat to match any of several values. Operators: title[eq], title[ne], title[contains], title[in]. title[in] takes a comma-separated list. */
-                title?: string;
-                /** @description Exact match. Repeat to match any of several values. Operators: done[eq], done[ne]. */
+                /** @description Exact match. Operators: done[eq]. */
                 done?: boolean;
                 /** @description Exact match. Repeat to match any of several values. Operators: priority[eq], priority[ne], priority[gt], priority[gte], priority[lt], priority[lte], priority[in]. priority[in] takes a comma-separated list. */
                 priority?: number;
+                /** @description Case-insensitive substring match. Operators: title[contains]. */
+                title?: string;
             };
             header?: never;
             path?: never;

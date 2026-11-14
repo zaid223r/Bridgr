@@ -29,22 +29,37 @@ app.ListenAndServe()
 - **Generic CRUD**: `GET/POST /todos`, `GET/PUT/PATCH/DELETE /todos/{id}` from a single
   call. `PUT` replaces the record (missing fields become zero); `PATCH` changes only the
   fields in the body, so `{"done": false}` sets `done` and leaves the rest alone.
-- **Filtering** that models opt into:
-  - `FilterableFields()` lists the fields that can be filtered.
-  - `GenericFiltering()` makes every field filterable.
-  - `?title=milk`: strings match case-insensitively as substrings; other types match
-    exactly; repeat a parameter to match any of several values.
-  - Operators: `?qty[gte]=3&qty[lt]=10`, `?title[eq]=Buy milk`, `?qty[in]=1,2,3`.
-    Strings support `eq ne contains in`, booleans `eq ne`, numbers and times
-    `eq ne gt gte lt lte in`.
-  - Unknown fields, unsupported operators and unparsable values return `400` with the
-    offending field in `invalid_fields`. Values are always bound as SQL parameters.
-- **Paging and sorting**: `?limit=20&offset=40&sort=-qty,title`. Lists return 50 records
-  by default and at most 200 (`Options.DefaultLimit` / `MaxLimit`). Responses carry
-  `X-Total-Count` and an RFC 8288 `Link` header with `first`, `prev`, `next` and `last`
-  pages that keep your filters. Sorting works on the primary key and filterable fields.
-  - A `FilterableFields` entry that isn't a JSON field of the model panics at
-    registration, so the mistake stops the program at startup.
+- **Filtering, deny by default**: nothing is filterable until `CRUDOptions.Filters`
+  lists it, each field with the operators it allows:
+
+  ```go
+  bridgr.CRUD[Post](app, "posts", &bridgr.CRUDOptions[Post]{
+  	Filters: bridgr.Filters{
+  		"user_id":    bridgr.Exact,                   // ?user_id=7
+  		"title":      bridgr.Exact | bridgr.Contains, // ?title=Hi, ?title[contains]=hi
+  		"created_at": bridgr.Range,                   // ?created_at[gte]=2026-01-01T00:00:00Z
+  		"status":     bridgr.Exact | bridgr.In,       // ?status=a&status=b, ?status[in]=a,b
+  	},
+  	Sort: []string{"created_at", "title"},
+  })
+  ```
+
+  - Operator sets: `Exact` (`eq`), `Not` (`ne`), `Contains` (case-insensitive substring,
+    strings only), `Range` (`gt gte lt lte`, numbers and times), `In`, and `All`
+    (everything the field's type supports). Combine them with `|`.
+  - A plain `?field=value` is an exact match when `Exact` is allowed, otherwise a
+    substring match when `Contains` is. Repeating it matches any of the values when `In`
+    is allowed.
+  - Unlisted fields, operators a field doesn't allow, and unparsable values return `400`,
+    naming the field in `invalid_fields`. Values are always bound as SQL parameters.
+  - Naming a field the model doesn't have, a writeonly field, or an operator that doesn't
+    fit the type (`Contains` on a number) panics at registration, so the mistake stops
+    the program at startup.
+- **Paging and sorting**: `?limit=20&offset=40&sort=-created_at,title`. Lists return 50
+  records by default and at most 200 (`CRUDOptions.DefaultLimit` / `MaxLimit`). Responses
+  carry `X-Total-Count` and an RFC 8288 `Link` header with `first`, `prev`, `next` and
+  `last` pages that keep your filters. Sorting works on the primary key and the fields in
+  `CRUDOptions.Sort`.
 - **OpenAPI 3.1** at `/openapi.json` and a [Scalar](https://github.com/scalar/scalar) API
   reference at `/docs`. Scalar is pinned and embedded, so docs work offline and need no
   CDN; `brhttp.Config{Docs: api.DocsOptions{Theme: "moon", DarkMode: true, CDN: true}}`
@@ -125,12 +140,15 @@ type Todo struct {
 	Done  bool   `json:"done"`
 }
 
-// GenericFiltering makes every Todo field filterable.
-func (Todo) GenericFiltering() bool { return true }
-
 func main() {
 	app := bridgr.New(bridgr.Config{Addr: ":8080", Title: "Todo API", DB: bridgr.Memory()})
-	bridgr.CRUD[Todo](app, "todos", nil)
+	bridgr.CRUD[Todo](app, "todos", &bridgr.CRUDOptions[Todo]{
+		Filters: bridgr.Filters{
+			"title": bridgr.Contains, // ?title=milk matches substrings
+			"done":  bridgr.Exact,    // ?done=false
+		},
+		Sort: []string{"title"},
+	})
 
 	if err := app.ListenAndServe(); err != nil { // stops gracefully on Ctrl+C / SIGTERM
 		log.Fatal(err)
@@ -174,8 +192,7 @@ name: `bridgr.CRUD[Todo](app, "todos", &bridgr.CRUDOptions[Todo]{Store: todos})`
 Then try:
 
 - `POST /todos` with `{"title":"buy milk"}`
-- `GET /todos?title=milk&done=false` (strings match case-insensitively as substrings;
-  repeat a parameter to match any of several values)
+- `GET /todos?title=milk&done=false&sort=-title`
 - `GET /docs` for the API reference, `GET /openapi.json` for the spec
 
 The same example is runnable: `go run ./examples/quickstart`.

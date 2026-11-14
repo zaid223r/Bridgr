@@ -17,12 +17,15 @@ type Todo struct {
 	Done  bool   `json:"done"`
 }
 
-// GenericFiltering makes every Todo field filterable.
-func (Todo) GenericFiltering() bool { return true }
-
 func main() {
 	app := bridgr.New(bridgr.Config{Addr: ":8080", Title: "Todo API", DB: bridgr.Memory()})
-	bridgr.CRUD[Todo](app, "todos", nil)
+	bridgr.CRUD[Todo](app, "todos", &bridgr.CRUDOptions[Todo]{
+		Filters: bridgr.Filters{
+			"title": bridgr.Contains, // ?title=milk matches substrings
+			"done":  bridgr.Exact,    // ?done=false
+		},
+		Sort: []string{"title"},
+	})
 
 	if err := app.ListenAndServe(); err != nil { // stops gracefully on Ctrl+C / SIGTERM
 		log.Fatal(err)

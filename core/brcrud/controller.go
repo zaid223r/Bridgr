@@ -42,6 +42,13 @@ type Options[T any] struct {
 	Validate   func(input T) error
 	Auth       func(r *http.Request) error
 
+	// Filters lists the fields list requests may filter on and the operators
+	// each allows, e.g. Filters{"title": Exact | Contains, "qty": Range}.
+	// Nothing else is filterable.
+	Filters Filters
+	// Sort lists the fields list requests may sort on, besides the primary key.
+	Sort []string
+
 	// DefaultLimit is the page size when a list request has no limit. Default 50.
 	DefaultLimit int
 	// MaxLimit is the largest limit a client may ask for. Default 200.
@@ -87,8 +94,9 @@ type Hooks[T any] struct {
 // Errors are written as RFC 9457 problem details; see brerrors.FromError for the
 // status mapping.
 //
-// It panics if T is not a valid model (e.g. FilterableFields names a field T
-// doesn't have) or has no primary key, so mistakes stop the program at startup.
+// It panics if T is not a valid model, has no primary key, or Filters or Sort
+// name a field T doesn't have or an operator that doesn't fit its type, so
+// mistakes stop the program at startup.
 func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store[T], opts *Options[T]) {
 	model := mustModel[T](path)
 	if model.PrimaryKey == nil {
@@ -111,11 +119,7 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 		panic(fmt.Sprintf("bridgr: registering /%s: %s has writeonly fields, which are only hidden at the top level of a resource; drop the tag or respond with a separate type", path, at))
 	}
 	acc := newAccess[T](model)
-	for _, f := range model.Filterable {
-		if reservedParams[f.JSONName] {
-			panic(fmt.Sprintf("bridgr: registering /%s: field %q can't be filterable; limit, offset and sort are reserved", path, f.JSONName))
-		}
-	}
+	list := resolveList("bridgr: registering /"+path, model, opts.Filters, opts.Sort, limits)
 
 	base := "/" + path
 
@@ -124,6 +128,8 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 		Validate:     opts.Validate != nil,
 		DefaultLimit: limits.def,
 		MaxLimit:     limits.max,
+		Filters:      list.docs(),
+		Sort:         list.sortable,
 	})
 
 	handle := func(method, pattern string, handler http.HandlerFunc) {
@@ -135,7 +141,7 @@ func RegisterCRUD[T any](router *brhttp.Router, path string, store brstore.Store
 	}
 
 	handle("GET", base, func(w http.ResponseWriter, r *http.Request) {
-		q, err := parseQuery(model, r.URL.Query(), limits)
+		q, err := parseQuery(list, r.URL.Query())
 		if err != nil {
 			brerrors.WriteError(w, r, err)
 			return

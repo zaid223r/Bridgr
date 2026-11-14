@@ -43,7 +43,7 @@ func hookedServer(t *testing.T, store *fakeStore, tr *trace, opts brcrud.Options
 	})
 	opts.Events = bus
 	router := brhttp.NewRouter()
-	brcrud.RegisterCRUD[item](router, "items", store, &opts)
+	brcrud.RegisterCRUD[item](router, "items", store, withItemList(&opts))
 	return router
 }
 

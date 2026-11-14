@@ -41,8 +41,6 @@ type Todo struct {
 	hidden   string //nolint:unused // proves unexported fields are skipped
 }
 
-func (Todo) GenericFiltering() bool { return true }
-
 func mustOf[T any](t *testing.T) *brschema.Model {
 	t.Helper()
 	m, err := brschema.Of[T]()
@@ -331,69 +329,6 @@ func TestEmbeddedConflicts(t *testing.T) {
 	}
 }
 
-type listFiltered struct {
-	ID    int    `json:"id"`
-	Title string `json:"title"`
-	Body  string `json:"body"`
-}
-
-func (listFiltered) FilterableFields() []string { return []string{"title", "id"} }
-
-type badFilter struct {
-	Title string `json:"title"`
-}
-
-func (badFilter) FilterableFields() []string { return []string{"Title"} }
-
-type genericOff struct {
-	Title string `json:"title"`
-}
-
-func (genericOff) GenericFiltering() bool { return false }
-
-type ptrReceiver struct {
-	Title string `json:"title"`
-}
-
-func (*ptrReceiver) GenericFiltering() bool { return true }
-
-func TestFilterable(t *testing.T) {
-	t.Parallel()
-
-	type plain struct {
-		Title string `json:"title"`
-	}
-
-	tests := []struct {
-		name  string
-		model *brschema.Model
-		want  []string
-	}{
-		{"GenericFiltering allows all", mustOf[Todo](t), jsonNames(mustOf[Todo](t).Fields)},
-		{"FilterableFields keeps declared order", mustOf[listFiltered](t), []string{"title", "id"}},
-		{"GenericFiltering false allows none", mustOf[genericOff](t), nil},
-		{"no interface allows none", mustOf[plain](t), nil},
-		{"pointer-receiver methods are ignored", mustOf[ptrReceiver](t), nil},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			if got := jsonNames(tt.model.Filterable); !slices.Equal(got, tt.want) {
-				t.Errorf("filterable = %v, want %v", got, tt.want)
-			}
-			for _, name := range tt.want {
-				if _, ok := tt.model.FilterField(name); !ok {
-					t.Errorf("FilterField(%q) not found", name)
-				}
-			}
-		})
-	}
-
-	if _, ok := mustOf[listFiltered](t).FilterField("body"); ok {
-		t.Error(`FilterField("body") should not be filterable`)
-	}
-}
-
 func TestErrors(t *testing.T) {
 	t.Parallel()
 
@@ -402,7 +337,6 @@ func TestErrors(t *testing.T) {
 		typ     reflect.Type
 		wantErr string
 	}{
-		{"unknown filterable field", reflect.TypeFor[badFilter](), `"Title" is not a JSON field of badFilter`},
 		{"not a struct", reflect.TypeFor[string](), "string is not a struct"},
 		{"nil type", nil, "nil type"},
 	}
@@ -427,7 +361,7 @@ func TestCache(t *testing.T) {
 	var wg sync.WaitGroup
 	results := make([]*brschema.Model, 16)
 	for i := range results {
-		wg.Go(func() { results[i] = mustOf[listFiltered](t) })
+		wg.Go(func() { results[i] = mustOf[Access](t) })
 	}
 	wg.Wait()
 	for _, m := range results {
@@ -436,8 +370,11 @@ func TestCache(t *testing.T) {
 		}
 	}
 
-	_, err1 := brschema.Of[badFilter]()
-	_, err2 := brschema.Of[badFilter]()
+	type badTag struct {
+		ID int64 `json:"id" bridgr:"nope"`
+	}
+	_, err1 := brschema.Of[badTag]()
+	_, err2 := brschema.Of[badTag]()
 	if err1 == nil || err1 != err2 { //nolint:errorlint // checks the cached error is reused
 		t.Errorf("cached error not reused: %v vs %v", err1, err2)
 	}
@@ -472,14 +409,14 @@ func BenchmarkOfCached(b *testing.B) {
 	}
 }
 
-func BenchmarkFilterFieldLookup(b *testing.B) {
+func BenchmarkFieldLookup(b *testing.B) {
 	m, err := brschema.Of[Todo]()
 	if err != nil {
 		b.Fatal(err)
 	}
 	b.ReportAllocs()
 	for b.Loop() {
-		_, _ = m.FilterField("user_id")
+		_, _ = m.FieldByJSON("user_id")
 	}
 }
 

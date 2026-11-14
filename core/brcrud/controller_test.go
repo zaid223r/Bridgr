@@ -26,7 +26,28 @@ type item struct {
 	Price  float64 `json:"price"`
 }
 
-func (item) FilterableFields() []string { return []string{"title", "qty", "active"} }
+// itemFilters allows every operator on the filterable item fields.
+var itemFilters = brcrud.Filters{
+	"title":  brcrud.All,
+	"qty":    brcrud.All,
+	"active": brcrud.All,
+}
+
+var itemSort = []string{"title", "qty", "active"}
+
+// withItemList fills in the item filters and sort unless opts sets its own.
+func withItemList(opts *brcrud.Options[item]) *brcrud.Options[item] {
+	if opts == nil {
+		opts = &brcrud.Options[item]{}
+	}
+	if opts.Filters == nil {
+		opts.Filters = itemFilters
+	}
+	if opts.Sort == nil {
+		opts.Sort = itemSort
+	}
+	return opts
+}
 
 // fakeStore is an in-memory store that records what the handlers passed in and
 // can simulate a storage failure.
@@ -115,7 +136,7 @@ var seedItems = []item{
 func newServer(t *testing.T, store *fakeStore, opts *brcrud.Options[item]) *brhttp.Router {
 	t.Helper()
 	router := brhttp.NewRouter()
-	brcrud.RegisterCRUD[item](router, "items", store, opts)
+	brcrud.RegisterCRUD[item](router, "items", store, withItemList(opts))
 	return router
 }
 
@@ -248,7 +269,11 @@ func TestCRUDRoutes(t *testing.T) {
 func TestListFilters(t *testing.T) {
 	t.Parallel()
 	store := newFakeStore(t, seedItems...)
-	router := newServer(t, store, nil)
+	router := newServer(t, store, &brcrud.Options[item]{Filters: brcrud.Filters{
+		"title":  brcrud.Contains, // plain values match substrings
+		"qty":    brcrud.Exact | brcrud.In,
+		"active": brcrud.Exact,
+	}})
 
 	tests := []struct {
 		query string
@@ -622,7 +647,7 @@ func TestFilterOperatorErrors(t *testing.T) {
 		{"?active[in]=true", `operator "in" is not supported for filter active; use one of: eq, ne`, []string{"active"}},
 		{"?qty[]=1", `operator "" is not supported for filter qty; use one of: eq, ne, gt, gte, lt, lte, in`, []string{"qty"}},
 		{"?qty[gt][lt]=1", `operator "gt][lt" is not supported for filter qty; use one of: eq, ne, gt, gte, lt, lte, in`, []string{"qty"}},
-		{"?qty[gt]=1&qty[gt]=2", `invalid value "1,2" for filter qty: want a single value (use [in] for several)`, []string{"qty"}},
+		{"?qty[gt]=1&qty[gt]=2", `invalid value "1,2" for filter qty: want a single value`, []string{"qty"}},
 		{"?qty[in]=1,x", `invalid value "x" for filter qty: want integer (int64)`, []string{"qty"}},
 		{"?qty[gte]=lots", `invalid value "lots" for filter qty: want integer (int64)`, []string{"qty"}},
 		{"?price[gt]=1", `invalid filter field: price`, []string{"price"}},
@@ -735,7 +760,7 @@ func TestCountFailure(t *testing.T) {
 	store := newFakeStore(t, seedItems...)
 	countFails := &countFailingStore{fakeStore: store}
 	router := brhttp.NewRouter()
-	brcrud.RegisterCRUD[item](router, "items", countFails, nil)
+	brcrud.RegisterCRUD[item](router, "items", countFails, withItemList(nil))
 	decodeProblem(t, serve(t, router, "GET", "/items", ""), http.StatusInternalServerError)
 }
 
