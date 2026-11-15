@@ -46,7 +46,7 @@ func CORS(opts CORSOptions) func(http.Handler) http.Handler {
 	}
 	origins := map[string]bool{}
 	for _, o := range opts.AllowedOrigins {
-		origins[strings.ToLower(strings.TrimSuffix(o, "/"))] = true
+		origins[strings.ToLower(strings.TrimSuffix(strings.TrimSpace(o), "/"))] = true
 	}
 	methods := strings.Join(orDefault(opts.AllowedMethods, []string{"GET", "POST", "PUT", "PATCH", "DELETE"}), ", ")
 	headers := strings.Join(orDefault(opts.AllowedHeaders, []string{"Content-Type", "Authorization", "X-Request-ID"}), ", ")
