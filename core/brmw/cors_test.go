@@ -124,3 +124,14 @@ func TestCORSRejectsUnsafeConfig(t *testing.T) {
 		}()
 	}
 }
+
+func TestCORSOriginsWithSpaces(t *testing.T) {
+	h := brmw.CORS(brmw.CORSOptions{AllowedOrigins: []string{" https://app.example.com/ "}})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Origin", "https://app.example.com")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://app.example.com" {
+		t.Fatalf("Access-Control-Allow-Origin = %q, want the trimmed origin", got)
+	}
+}
