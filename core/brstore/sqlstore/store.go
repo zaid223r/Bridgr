@@ -345,6 +345,14 @@ func (s *Store[T]) listSQL(q brstore.Query) (string, []any, error) {
 
 	b.WriteString(" ORDER BY ")
 	for _, srt := range q.Sort {
+		if name, ok := strings.CutPrefix(srt.Field, "ci:"); ok {
+			b.WriteString("LOWER(" + name + ")")
+			if srt.Desc {
+				b.WriteString(" DESC")
+			}
+			b.WriteString(", ")
+			continue
+		}
 		col, ok := s.columns[srt.Field]
 		if !ok {
 			return "", nil, fmt.Errorf("%w: unknown sort field %q", brstore.ErrInvalidQuery, srt.Field)
