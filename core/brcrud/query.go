@@ -189,6 +189,11 @@ func parseSort(model *brschema.Model, raw string) ([]brstore.Sort, error) {
 	var out []brstore.Sort
 	for part := range strings.SplitSeq(raw, ",") {
 		name, desc := strings.CutPrefix(part, "-")
+		// "ci:" asks for a case-insensitive sort; the store checks the field.
+		if strings.HasPrefix(name, "ci:") {
+			out = append(out, brstore.Sort{Field: name, Desc: desc})
+			continue
+		}
 		_, filterable := model.FilterField(name)
 		isPK := model.PrimaryKey != nil && model.PrimaryKey.JSONName == name
 		if !filterable && !isPK {
