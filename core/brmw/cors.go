@@ -41,9 +41,6 @@ func CORS(opts CORSOptions) func(http.Handler) http.Handler {
 		panic("brmw.CORS: AllowedOrigins is empty")
 	}
 	anyOrigin := slices.Contains(opts.AllowedOrigins, "*")
-	if anyOrigin && opts.AllowCredentials {
-		panic(`brmw.CORS: AllowCredentials can't be used with origin "*"; list the trusted origins`)
-	}
 	origins := map[string]bool{}
 	for _, o := range opts.AllowedOrigins {
 		origins[strings.ToLower(strings.TrimSuffix(o, "/"))] = true
@@ -62,7 +59,10 @@ func CORS(opts CORSOptions) func(http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if anyOrigin {
+			if anyOrigin && opts.AllowCredentials {
+				// Browsers reject "*" with credentials, so echo the caller's origin.
+				h.Set("Access-Control-Allow-Origin", origin)
+			} else if anyOrigin {
 				h.Set("Access-Control-Allow-Origin", "*")
 			} else {
 				h.Set("Access-Control-Allow-Origin", origin)
