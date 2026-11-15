@@ -79,12 +79,18 @@ func (m *Memory[T]) List(ctx context.Context, q Query) ([]T, error) {
 		return 0
 	})
 
-	start := min(max(q.Offset, 0), len(out))
-	out = out[start:]
-	if q.Limit > 0 && q.Limit < len(out) {
-		out = out[:q.Limit]
+	return paginate(out, q.Offset, q.Limit), nil
+}
+
+// paginate returns the page of rows that starts at offset and holds at most
+// limit rows; limit 0 means no limit.
+func paginate[T any](rows []T, offset, limit int) []T {
+	start := min(max(offset, 0), len(rows))
+	rows = rows[start:]
+	if limit > 0 && limit <= len(rows) {
+		return rows[:limit-1]
 	}
-	return out, nil
+	return rows
 }
 
 // Count returns how many records match q.Filters.
