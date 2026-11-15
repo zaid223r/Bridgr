@@ -116,6 +116,11 @@ func (m *Memory[T]) matching(filters []resolvedFilter) ([]T, error) {
 	return out, nil
 }
 
+// Len returns how many records are stored, for metrics and demos.
+func (m *Memory[T]) Len() int {
+	return len(m.rows)
+}
+
 // Get returns the record with primary key id.
 func (m *Memory[T]) Get(ctx context.Context, id string) (T, error) {
 	var zero T
