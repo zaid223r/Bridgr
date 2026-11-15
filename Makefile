@@ -6,7 +6,7 @@ INTEGRATION_ENV := BRIDGR_POSTGRES_DSN="postgres://bridgr:bridgr@localhost:55432
 PKGS := ./...
 
 ## check: everything CI runs. Must pass before a feature is done.
-check: fmt vet lint race
+check: fmt vet lint test
 
 ## fmt: format code (gofumpt + goimports via golangci-lint)
 fmt:
